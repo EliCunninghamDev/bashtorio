@@ -1,0 +1,1036 @@
+/* Bashtorio Game Styles */
+
+.bashtorio-root {
+  width: 100%;
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+}
+
+/* Boot Screen */
+.bashtorio-boot {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.boot-content {
+  text-align: center;
+  max-width: 700px;
+  padding: 30px;
+}
+
+.boot-content h1 {
+  font-size: 2.5rem;
+  margin-bottom: 5px;
+  color: #fff;
+}
+
+.boot-sh {
+  color: #00ff41;
+}
+
+.boot-subtitle {
+  color: #fff;
+  margin-bottom: 20px;
+  font-size: 1rem;
+}
+
+.boot-status {
+  color: #00ff41;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+}
+
+.boot-terminal {
+  background: #000;
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid #00ff41;
+  overflow: hidden;
+}
+
+.screen-container {
+  width: 640px;
+  height: 300px;
+  overflow: hidden;
+  background: #000;
+}
+
+.screen-container > div {
+  color: #0f0;
+  padding: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Game Container */
+.bashtorio-game {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  grid-template-columns: 1fr 720px;
+  overflow: visible;
+}
+
+.game-canvas {
+  grid-row: 1;
+  grid-column: 1;
+  background: #12121f;
+}
+
+/* Sidebar */
+.bashtorio-sidebar {
+  grid-row: 1;
+  grid-column: 2;
+  background: #1a1a2e;
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bashtorio-output {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bashtorio-source {
+  flex: 0 0 150px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #333;
+}
+
+.bashtorio-terminal {
+  flex: 0 0 180px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #333;
+}
+
+.panel-header {
+  padding: 10px 15px;
+  background: #1e1e32;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.panel-header button {
+  padding: 4px 10px;
+  background: #2a2a4a;
+  border: none;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.panel-header button:hover {
+  background: #3a3a5a;
+  color: #fff;
+}
+
+.output-sinks {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.sink-section {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+.sink-label {
+  padding: 6px 12px;
+  background: #2a2a4a;
+  color: #00d9ff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-bottom: 1px solid #333;
+}
+
+.sink-output {
+  padding: 12px;
+  background: #000;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre;
+  overflow-x: auto;
+  color: #aaa;
+  margin: 0;
+  min-height: 60px;
+  max-height: 300px;
+}
+
+/* ANSI Color Support */
+.ansi-bold { font-weight: bold; }
+.ansi-dim { opacity: 0.7; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+
+/* Foreground colors */
+.ansi-fg-black { color: #000; }
+.ansi-fg-red { color: #c75646; }
+.ansi-fg-green { color: #8eb33b; }
+.ansi-fg-yellow { color: #d0b03c; }
+.ansi-fg-blue { color: #72b3cc; }
+.ansi-fg-magenta { color: #c8a0d1; }
+.ansi-fg-cyan { color: #218693; }
+.ansi-fg-white { color: #b0b0b0; }
+
+/* Bright foreground colors */
+.ansi-fg-bright-black { color: #5d5d5d; }
+.ansi-fg-bright-red { color: #e09690; }
+.ansi-fg-bright-green { color: #cdee69; }
+.ansi-fg-bright-yellow { color: #ffe377; }
+.ansi-fg-bright-blue { color: #9cd9f0; }
+.ansi-fg-bright-magenta { color: #fbb1f9; }
+.ansi-fg-bright-cyan { color: #77dfd8; }
+.ansi-fg-bright-white { color: #f7f7f7; }
+
+/* Background colors */
+.ansi-bg-black { background-color: #000; }
+.ansi-bg-red { background-color: #c75646; }
+.ansi-bg-green { background-color: #8eb33b; }
+.ansi-bg-yellow { background-color: #d0b03c; }
+.ansi-bg-blue { background-color: #72b3cc; }
+.ansi-bg-magenta { background-color: #c8a0d1; }
+.ansi-bg-cyan { background-color: #218693; }
+.ansi-bg-white { background-color: #b0b0b0; }
+
+/* Bright background colors */
+.ansi-bg-bright-black { background-color: #5d5d5d; }
+.ansi-bg-bright-red { background-color: #e09690; }
+.ansi-bg-bright-green { background-color: #cdee69; }
+.ansi-bg-bright-yellow { background-color: #ffe377; }
+.ansi-bg-bright-blue { background-color: #9cd9f0; }
+.ansi-bg-bright-magenta { background-color: #fbb1f9; }
+.ansi-bg-bright-cyan { background-color: #77dfd8; }
+.ansi-bg-bright-white { background-color: #f7f7f7; }
+
+.source-input {
+  flex: 1;
+  padding: 15px;
+  background: transparent;
+  border: none;
+  color: #ccc;
+  font-family: 'Consolas', monospace;
+  font-size: 0.9rem;
+  resize: none;
+}
+
+.source-input:focus {
+  outline: none;
+}
+
+.game-terminal {
+  flex: 1;
+  background: #000;
+  overflow: hidden;
+}
+
+.game-terminal .screen-container {
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+.game-terminal .screen-container:focus {
+  outline: 1px solid #0f0;
+}
+
+.game-terminal .screen-container > div {
+  font: 14px monospace !important;
+  line-height: 16px !important;
+  color: #0f0;
+  padding: 5px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Toolbar */
+.bashtorio-toolbar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  background: #1e1e32;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #333;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
+}
+
+.toolbar-main {
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-group {
+  overflow: visible;
+}
+
+/* Mode button wrapper for popout positioning */
+.mode-btn-wrapper {
+  position: relative;
+  overflow: visible;
+}
+
+/* Vertical popout above the Place button */
+.placeable-popout {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #1e1e32;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.placeable-popout::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #3a3a5a;
+  border-bottom: none;
+}
+
+/* Mode buttons (Select, Erase, Place) */
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px;
+  background: #2a2a4a;
+  border: 2px solid #3a3a5a;
+  border-radius: 8px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 55px;
+}
+
+.mode-btn:hover {
+  background: #3a3a5a;
+  border-color: #4a4a6a;
+}
+
+.mode-btn.active {
+  background: #3a5a8a;
+  border-color: #4a8aca;
+  color: #fff;
+}
+
+/* Placeable buttons (Belt, Splitter, etc.) in vertical popout */
+.placeable-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #2a2a4a;
+  border: 2px solid #3a3a5a;
+  border-radius: 6px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 80px;
+  white-space: nowrap;
+}
+
+.placeable-btn:hover {
+  background: #3a3a5a;
+  border-color: #4a4a6a;
+}
+
+.placeable-btn.active {
+  background: #4a3a6a;
+  border-color: #8a6aca;
+  color: #fff;
+}
+
+.placeable-btn .tool-icon {
+  font-size: 1.1rem;
+}
+
+.placeable-btn .tool-label {
+  font-size: 0.75rem;
+}
+
+/* Legacy tool-btn (for backwards compatibility) */
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px;
+  background: #2a2a4a;
+  border: 2px solid #3a3a5a;
+  border-radius: 8px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 55px;
+}
+
+.tool-btn:hover {
+  background: #3a3a5a;
+  border-color: #4a4a6a;
+}
+
+.tool-btn.active {
+  background: #3a5a8a;
+  border-color: #4a8aca;
+  color: #fff;
+}
+
+.tool-icon {
+  font-size: 1.3rem;
+}
+
+.tool-label {
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+.dir-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 1.3rem;
+  background: #2a2a4a;
+  border: 2px solid #3a3a5a;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.dir-btn:hover {
+  background: #3a3a5a;
+}
+
+.direction-label, .hint {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.speed-slider {
+  width: 100px;
+  cursor: pointer;
+}
+
+.speed-value {
+  color: #00d9ff;
+  min-width: 35px;
+}
+
+.action-btn {
+  padding: 8px 16px;
+  background: #2a4a2a;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #3a6a3a;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stop-btn {
+  background: #4a2a2a;
+}
+
+.stop-btn:hover:not(:disabled) {
+  background: #6a3a3a;
+}
+
+.clear-btn {
+  background: #4a4a4a;
+}
+
+.clear-btn:hover {
+  background: #5a5a5a;
+}
+
+.save-btn {
+  background: #2a4a5a;
+}
+
+.save-btn:hover {
+  background: #3a5a6a;
+}
+
+.load-btn {
+  background: #4a3a2a;
+}
+
+.load-btn:hover {
+  background: #5a4a3a;
+}
+
+.presets-btn {
+  background: #4a2a5a;
+}
+
+.presets-btn:hover {
+  background: #5a3a6a;
+}
+
+.network-btn {
+  background: #2a2a4a;
+}
+
+.network-btn:hover {
+  background: #3a3a5a;
+}
+
+.network-btn.connected {
+  background: #2a4a3a;
+  border: 1px solid #00ff88;
+}
+
+.vm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #0a0a1a;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.vm-status .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ff88;
+  animation: pulse 2s infinite;
+}
+
+.vm-status.busy .status-dot {
+  background: #ffaa00;
+}
+
+.vm-status.error .status-dot {
+  background: #ff4444;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Machine Picker Popup */
+.machine-picker {
+  position: fixed;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 8px;
+  background: #1a1a2e;
+  border: 2px solid #4a4a6a;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  min-width: 60px;
+  background: #2a2a4a;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.picker-item:hover {
+  background: #3a3a5a;
+  border-color: #5a5a7a;
+}
+
+.picker-item.active {
+  background: #3a5a8a;
+  border-color: #4a8aca;
+  color: #fff;
+}
+
+.picker-icon {
+  font-size: 1.4rem;
+  margin-bottom: 2px;
+}
+
+.picker-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Modals */
+.bashtorio-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: #1e1e32;
+  padding: 25px;
+  border-radius: 12px;
+  min-width: 400px;
+  max-width: 90vw;
+  border: 1px solid #333;
+}
+
+.modal-content h3 {
+  margin: 0 0 20px 0;
+  color: #00d9ff;
+}
+
+.modal-description {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 15px;
+  line-height: 1.4;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.form-group input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  background: #12121f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.form-group input[type="text"]:focus {
+  outline: none;
+  border-color: #00d9ff;
+}
+
+.form-group input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.network-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: #0a0a1a;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+}
+
+.network-status .status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4444;
+}
+
+.network-status .status-dot.connected {
+  background: #00ff88;
+}
+
+/* Command Modal - Terminal Style */
+.cmd-modal-content {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  min-width: 450px;
+}
+
+.cmd-terminal {
+  background: #0a0a14;
+  border: 2px solid #4a6a8a;
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.cmd-terminal-header {
+  background: #1a1a2a;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+.cmd-terminal-title {
+  color: #4a6a8a;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.cmd-terminal-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cmd-autostart-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #888;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.cmd-autostart-label:hover {
+  color: #aaa;
+}
+
+.cmd-autostart-label input {
+  cursor: pointer;
+}
+
+.cmd-terminal-body {
+  padding: 12px;
+}
+
+.cmd-prompt-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cmd-prompt {
+  color: #00ff88;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.cmd-prompt-test {
+  color: #888;
+}
+
+.cmd-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 4px 0;
+  outline: none;
+}
+
+.cmd-input::placeholder {
+  color: #444;
+}
+
+.cmd-separator {
+  height: 1px;
+  background: #333;
+  margin: 12px 0;
+}
+
+.cmd-test-section {
+  opacity: 0.8;
+}
+
+.cmd-test-label {
+  color: #666;
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cmd-run-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #aaa;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 4px 0;
+  outline: none;
+}
+
+.cmd-run-input::placeholder {
+  color: #444;
+}
+
+.cmd-run-btn {
+  padding: 4px 12px;
+  background: #2a3a2a;
+  border: 1px solid #3a5a3a;
+  border-radius: 4px;
+  color: #8a8;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  transition: all 0.15s;
+}
+
+.cmd-run-btn:hover:not(:disabled) {
+  background: #3a4a3a;
+  color: #afa;
+}
+
+.cmd-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cmd-run-output {
+  margin-top: 8px;
+  padding: 8px;
+  background: #000;
+  border: 1px solid #222;
+  border-radius: 4px;
+  color: #64c8ff;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  min-height: 30px;
+}
+
+.cmd-run-output:empty::before {
+  content: '(output will appear here)';
+  color: #333;
+}
+
+.cmd-terminal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #1a1a2a;
+  border-top: 1px solid #333;
+}
+
+.cmd-terminal-footer button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s;
+}
+
+.cmd-cancel {
+  background: #2a2a3a;
+  color: #888;
+}
+
+.cmd-cancel:hover {
+  background: #3a3a4a;
+  color: #aaa;
+}
+
+.cmd-save {
+  background: #2a4a6a;
+  color: #fff;
+}
+
+.cmd-save:hover {
+  background: #3a5a7a;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-buttons button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.modal-buttons button:not(.primary) {
+  background: #333;
+  color: #aaa;
+}
+
+.modal-buttons button.primary {
+  background: #00d9ff;
+  color: #000;
+}
+
+.modal-buttons button:hover {
+  opacity: 0.9;
+}
+
+/* Presets Modal */
+.presets-modal-content {
+  min-width: 500px;
+  max-width: 600px;
+}
+
+.presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 15px;
+}
+
+.preset-item {
+  padding: 12px 15px;
+  background: #12121f;
+  border: 1px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-item:hover {
+  background: #1a1a2e;
+  border-color: #00d9ff;
+}
+
+.preset-name {
+  font-weight: 600;
+  color: #00d9ff;
+  margin-bottom: 4px;
+}
+
+.preset-description {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3a5a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a6a;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .bashtorio-game {
+    grid-template-columns: 1fr;
+  }
+
+  .bashtorio-sidebar {
+    display: none;
+  }
+
+  .bashtorio-toolbar {
+    justify-content: center;
+  }
+}
+
+/* Toast */
+.bashtorio-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  z-index: 2000;
+  border: 1px solid #444;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  animation: toast-fade-in 0.2s ease-out;
+}
+
+@keyframes toast-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

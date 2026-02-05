@@ -1,0 +1,12 @@
+{
+  "name": "bashtorio-monorepo",
+  "private": true,
+  "description": "Unix Pipe Factory Game - Factorio meets Bash",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter bashtorio-core build && pnpm --filter web build",
+    "preview": "pnpm --filter web preview"
+  },
+  "keywords": ["game", "unix", "pipes", "linux", "v86", "emulator"],
+  "license": "MIT"
+}
