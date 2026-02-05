@@ -12,7 +12,9 @@ export interface V86Config {
   autostart: boolean;
   network_relay_url?: string;
   initial_state?: { url: string };
-  filesystem?: { baseurl: string; basefs?: string };
+  filesystem?: { baseurl: string; basefs?: string } | Record<string, never>;
+  bzimage_initrd_from_filesystem?: boolean;
+  cmdline?: string;
 }
 
 export interface V86Emulator {
@@ -27,6 +29,8 @@ export interface V86Emulator {
   destroy(): void;
   save_state(): Promise<ArrayBuffer>;
   restore_state(state: ArrayBuffer): Promise<void>;
+  create_file(path: string, data: Uint8Array): Promise<void>;
+  read_file(path: string): Promise<Uint8Array>;
 }
 
 declare global {

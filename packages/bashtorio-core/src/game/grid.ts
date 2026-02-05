@@ -64,44 +64,53 @@ export function placeMachine(state: GameState, x: number, y: number, machineType
   const cell = getCell(state, x, y);
   if (!cell || cell.type === CellType.MACHINE) return null;
 
-  // Assign sink ID for sink machines
-  const sinkId = machineType === MachineType.SINK ? state.sinkIdCounter++ : 0;
+  const base = { x, y, lastCommandTime: 0 };
 
-  const machine: Machine = {
-    x,
-    y,
-    type: machineType,
-    command: 'cat',
-    autoStart: false,
-    displayBuffer: '',
-    displayText: '',
-    displayTime: 0,
-    lastByteTime: 0,
-    pendingInput: '',
-    outputBuffer: '',
-    processing: false,
-    lastInputTime: 0,
-    autoStartRan: false,
-    cwd: '/',
-    sinkId,
-    lastEmojiTime: 0,
-    lastCommandTime: 0,
-    emitInterval: 500,
-    lastEmitTime: 0,
-    sourcePos: 0,
-    flipperTrigger: '\n',
-    flipperDir: Direction.RIGHT,
-    flipperState: Direction.RIGHT,
-    constantText: 'hello\n',
-    constantInterval: 500,
-    constantPos: 0,
-    filterByte: '\n',
-    filterMode: 'pass',
-    counterTrigger: '\n',
-    counterCount: 0,
-    delayMs: 1000,
-    delayQueue: [],
-  };
+  let machine: Machine;
+  switch (machineType) {
+    case MachineType.SOURCE:
+      machine = { ...base, type: MachineType.SOURCE, sourceText: 'Hello World!\n', sourcePos: 0, emitInterval: 500, lastEmitTime: 0 };
+      break;
+    case MachineType.SINK:
+      machine = { ...base, type: MachineType.SINK, sinkId: state.sinkIdCounter++ };
+      break;
+    case MachineType.COMMAND:
+      machine = { ...base, type: MachineType.COMMAND, command: 'cat', autoStart: false, stream: false, inputMode: 'pipe', pendingInput: '', outputBuffer: '', processing: false, lastInputTime: 0, autoStartRan: false, cwd: '/', activeJobId: '', lastPollTime: 0, bytesRead: 0, streamBytesWritten: 0, lastStreamWriteTime: 0 };
+      break;
+    case MachineType.DISPLAY:
+      machine = { ...base, type: MachineType.DISPLAY, displayBuffer: '', displayText: '', displayTime: 0, lastByteTime: 0 };
+      break;
+    case MachineType.EMOJI:
+      machine = { ...base, type: MachineType.EMOJI, lastEmojiTime: 0 };
+      break;
+    case MachineType.NULL:
+      machine = { ...base, type: MachineType.NULL };
+      break;
+    case MachineType.LINEFEED:
+      machine = { ...base, type: MachineType.LINEFEED, emitInterval: 500, lastEmitTime: 0 };
+      break;
+    case MachineType.FLIPPER:
+      machine = { ...base, type: MachineType.FLIPPER, flipperTrigger: '\n', flipperDir: Direction.RIGHT, flipperState: Direction.RIGHT, outputBuffer: '' };
+      break;
+    case MachineType.DUPLICATOR:
+      machine = { ...base, type: MachineType.DUPLICATOR, outputBuffer: '' };
+      break;
+    case MachineType.CONSTANT:
+      machine = { ...base, type: MachineType.CONSTANT, constantText: 'hello\n', emitInterval: 500, constantPos: 0, lastEmitTime: 0 };
+      break;
+    case MachineType.FILTER:
+      machine = { ...base, type: MachineType.FILTER, filterByte: '\n', filterMode: 'pass', outputBuffer: '' };
+      break;
+    case MachineType.COUNTER:
+      machine = { ...base, type: MachineType.COUNTER, counterTrigger: '\n', counterCount: 0, outputBuffer: '' };
+      break;
+    case MachineType.DELAY:
+      machine = { ...base, type: MachineType.DELAY, delayMs: 1000, delayQueue: [], outputBuffer: '' };
+      break;
+    case MachineType.KEYBOARD:
+      machine = { ...base, type: MachineType.KEYBOARD, outputBuffer: '' };
+      break;
+  }
 
   state.machines.push(machine);
   setCell(state, x, y, { type: CellType.MACHINE, machine });

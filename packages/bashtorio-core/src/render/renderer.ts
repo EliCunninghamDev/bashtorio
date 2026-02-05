@@ -7,6 +7,9 @@ import {
   CellType,
   MachineType,
   type Machine,
+  type CommandMachine,
+  type SourceMachine,
+  type DisplayMachine,
   type Packet,
   type BeltCell,
   type SplitterCell,
@@ -14,6 +17,7 @@ import {
   type Camera,
   type OrphanedPacket,
 } from '../game/types';
+import type { ColorTheme, MachineColor } from '../util/themes';
 import type { GameState } from '../game/state';
 import { initGrid } from '../game/grid';
 
@@ -66,47 +70,47 @@ const TOOLTIP_BUFFER_TRUNC = 30;
 const TOOLTIP_BUFFER_SLICE = 27;
 
 // ---------------------------------------------------------------------------
-// Color palette
+// Color palette  (mutable - updated by applyRendererTheme)
 // ---------------------------------------------------------------------------
 
-const CLR_CANVAS_BG       = '#12121f';
-const CLR_GRID_LINE       = '#1e1e32';
+let CLR_CANVAS_BG       = '#12121f';
+let CLR_GRID_LINE       = '#1e1e32';
 
-const CLR_BELT_BG         = '#2a2a3a';
-const CLR_BELT_EDGE       = '#3a3a4a';
-const CLR_BELT_ARROW      = '#4a4a5a';
+let CLR_BELT_BG         = '#2a2a3a';
+let CLR_BELT_EDGE       = '#3a3a4a';
+let CLR_BELT_ARROW      = '#4a4a5a';
 
-const CLR_SPLITTER_BG     = '#3a2a4a';
-const CLR_SPLITTER_SYMBOL = '#8a6aaa';
+let CLR_SPLITTER_BG     = '#3a2a4a';
+let CLR_SPLITTER_SYMBOL = '#8a6aaa';
 
-const CLR_CMD_GREEN       = '#33ff33';
-const CLR_INPUT_AMBER     = '#ffaa00';
-const CLR_DOT_EMPTY       = '#333';
+let CLR_CMD_GREEN       = '#33ff33';
+let CLR_INPUT_AMBER     = '#ffaa00';
+let CLR_DOT_EMPTY       = '#333';
 
-const CLR_PACKET_BG       = '#1a1a2a';
-const CLR_PACKET_HEX      = '#666';
-const CLR_PACKET_CONTROL  = '#ff9632';
-const CLR_PACKET_SPACE    = '#888888';
-const CLR_PACKET_LOWER    = '#64c8ff';
-const CLR_PACKET_UPPER    = '#64ffc8';
-const CLR_PACKET_DIGIT    = '#ffff64';
-const CLR_PACKET_EXTENDED = '#c896ff';
-const CLR_PACKET_PUNCT    = '#ff96c8';
+let CLR_PACKET_BG       = '#1a1a2a';
+let CLR_PACKET_HEX      = '#666';
+let CLR_PACKET_CONTROL  = '#ff9632';
+let CLR_PACKET_SPACE    = '#888888';
+let CLR_PACKET_LOWER    = '#64c8ff';
+let CLR_PACKET_UPPER    = '#64ffc8';
+let CLR_PACKET_DIGIT    = '#ffff64';
+let CLR_PACKET_EXTENDED = '#c896ff';
+let CLR_PACKET_PUNCT    = '#ff96c8';
 
-const CLR_BUBBLE_BG       = '#2a2a4a';
-const CLR_BUBBLE_BORDER   = '#6a5acd';
-const CLR_BUBBLE_TEXT     = '#fff';
+let CLR_BUBBLE_BG       = '#2a2a4a';
+let CLR_BUBBLE_BORDER   = '#6a5acd';
+let CLR_BUBBLE_TEXT     = '#fff';
 
-const CLR_TOOLTIP_BG      = '#0a0a0a';
-const CLR_TOOLTIP_BORDER  = '#cccccc';
-const CLR_TOOLTIP_CMD     = CLR_CMD_GREEN;
-const CLR_TOOLTIP_INPUT   = CLR_INPUT_AMBER;
-const CLR_TOOLTIP_OUTPUT  = '#cccccc';
+let CLR_TOOLTIP_BG      = '#0a0a0a';
+let CLR_TOOLTIP_BORDER  = '#cccccc';
+let CLR_TOOLTIP_CMD     = '#33ff33';
+let CLR_TOOLTIP_INPUT   = '#ffaa00';
+let CLR_TOOLTIP_OUTPUT  = '#cccccc';
 
-// Flash interpolation targets (0x33, 0xff, 0x33) = #33ff33
-const FLASH_R = 0x33;
-const FLASH_G = 0xff;
-const FLASH_B = 0x33;
+// Flash interpolation targets
+let FLASH_R = 0x33;
+let FLASH_G = 0xff;
+let FLASH_B = 0x33;
 
 // ---------------------------------------------------------------------------
 // Fonts
@@ -123,9 +127,7 @@ const FONT_BUBBLE         = '14px "Segoe UI Emoji", "Noto Color Emoji", system-u
 // Machine color map  (hoisted so it's allocated once, not per-frame)
 // ---------------------------------------------------------------------------
 
-interface MachineColor { bg: string; border: string; text: string }
-
-const MACHINE_COLORS: Record<MachineType, MachineColor> = {
+let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SOURCE]:  { bg: '#2a5a2a', border: '#4a8a4a', text: '#ccc' },
   [MachineType.SINK]:    { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
   [MachineType.COMMAND]: { bg: '#0a0a0a', border: '#cccccc', text: CLR_CMD_GREEN },
@@ -153,7 +155,46 @@ const CTRL_NAMES = [
   'CAN', 'EM',  'SUB', 'ESC', 'FS',  'GS',  'RS',  'US',
 ];
 
-const CLR_FLIPPER_ARROW    = '#4a9a9a';
+let CLR_FLIPPER_ARROW    = '#4a9a9a';
+
+// ---------------------------------------------------------------------------
+// Theme application
+// ---------------------------------------------------------------------------
+
+export function applyRendererTheme(theme: ColorTheme): void {
+  CLR_CANVAS_BG       = theme.canvasBg;
+  CLR_GRID_LINE       = theme.gridLine;
+  CLR_BELT_BG         = theme.beltBg;
+  CLR_BELT_EDGE       = theme.beltEdge;
+  CLR_BELT_ARROW      = theme.beltArrow;
+  CLR_SPLITTER_BG     = theme.splitterBg;
+  CLR_SPLITTER_SYMBOL = theme.splitterSymbol;
+  CLR_CMD_GREEN       = theme.cmdGreen;
+  CLR_INPUT_AMBER     = theme.inputAmber;
+  CLR_DOT_EMPTY       = theme.dotEmpty;
+  CLR_FLIPPER_ARROW   = theme.flipperArrow;
+  FLASH_R             = theme.flashR;
+  FLASH_G             = theme.flashG;
+  FLASH_B             = theme.flashB;
+  CLR_PACKET_BG       = theme.packetBg;
+  CLR_PACKET_HEX      = theme.packetHex;
+  CLR_PACKET_CONTROL  = theme.packetControl;
+  CLR_PACKET_SPACE    = theme.packetSpace;
+  CLR_PACKET_LOWER    = theme.packetLower;
+  CLR_PACKET_UPPER    = theme.packetUpper;
+  CLR_PACKET_DIGIT    = theme.packetDigit;
+  CLR_PACKET_EXTENDED = theme.packetExtended;
+  CLR_PACKET_PUNCT    = theme.packetPunct;
+  CLR_BUBBLE_BG       = theme.bubbleBg;
+  CLR_BUBBLE_BORDER   = theme.bubbleBorder;
+  CLR_BUBBLE_TEXT     = theme.bubbleText;
+  CLR_TOOLTIP_BG      = theme.tooltipBg;
+  CLR_TOOLTIP_BORDER  = theme.tooltipBorder;
+  CLR_TOOLTIP_CMD     = theme.tooltipCmd;
+  CLR_TOOLTIP_INPUT   = theme.tooltipInput;
+  CLR_TOOLTIP_OUTPUT  = theme.tooltipOutput;
+  MACHINE_COLORS      = theme.machineColors;
+}
 
 // ---------------------------------------------------------------------------
 // Small pure helpers – all monomorphic, no allocations, V8 will inline these
@@ -351,6 +392,8 @@ export class Renderer {
 
     if (this.hoveredMachine && this.hoveredMachine.type === MachineType.COMMAND) {
       this.drawMachineTooltip(this.hoveredMachine);
+    } else if (this.hoveredMachine && this.hoveredMachine.type === MachineType.SOURCE) {
+      this.drawSourceTooltip(this.hoveredMachine);
     }
 
     // Placement preview
@@ -499,7 +542,8 @@ export class Renderer {
     // Direction arrows
     const centerX = cx(col);
     const centerY = cy(row);
-    const anim = running ? ((this.animationTime / BELT_ANIM_PERIOD) % 1) * HALF_GRID : 0;
+    const spacing = GRID_SIZE / 3;
+    const anim = running ? ((this.animationTime / BELT_ANIM_PERIOD) % 1) * spacing : 0;
 
     ctx.strokeStyle = CLR_BELT_ARROW;
     ctx.lineWidth = 2;
@@ -652,8 +696,11 @@ export class Renderer {
       }
 
       // Flash effect for command machines: white → green over FLASH_DURATION_MS
-      if (machine.type === MachineType.COMMAND && machine.lastCommandTime > 0) {
-        const elapsed = performance.now() - machine.lastCommandTime;
+      const flashTime = machine.type === MachineType.COMMAND
+        ? Math.max(machine.lastCommandTime, machine.lastStreamWriteTime)
+        : 0;
+      if (machine.type === MachineType.COMMAND && flashTime > 0) {
+        const elapsed = performance.now() - flashTime;
         if (elapsed < FLASH_DURATION_MS) {
           const t = elapsed / FLASH_DURATION_MS;
           const r = Math.round(lerp(255, FLASH_R, t));
@@ -682,9 +729,13 @@ export class Renderer {
       ctx.fillText(label, cx(machine.x), cy(machine.y));
     }
 
-    // Buffer indicator dots for command machines
+    // Buffer indicator for command machines
     if (machine.type === MachineType.COMMAND) {
-      this.drawBufferDots(px, py, machine);
+      if (machine.stream) {
+        this.drawStreamIndicator(px, py, machine);
+      } else {
+        this.drawBufferDots(px, py, machine);
+      }
     }
 
     // Direction arrow for flipper machines
@@ -697,7 +748,7 @@ export class Renderer {
   // Buffer dots (command machine)
   // -------------------------------------------------------------------------
 
-  private drawBufferDots(px: number, py: number, machine: Machine): void {
+  private drawBufferDots(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
     const totalWidth = (DOT_COUNT - 1) * DOT_SPACING;
     const startX = px + HALF_GRID - totalWidth / 2;
@@ -718,6 +769,34 @@ export class Renderer {
         ctx.stroke();
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Stream indicator (stream command machines)
+  // -------------------------------------------------------------------------
+
+  private drawStreamIndicator(px: number, py: number, machine: CommandMachine): void {
+    const ctx = this.ctx;
+    const now = performance.now();
+    const ANIM_DURATION = 300;
+    const BOUNCE_PX = 3;
+
+    // Animate on recent write
+    const elapsed = now - machine.lastStreamWriteTime;
+    let offsetY = 0;
+    if (machine.lastStreamWriteTime > 0 && elapsed < ANIM_DURATION) {
+      const t = elapsed / ANIM_DURATION;
+      offsetY = Math.sin(t * Math.PI * 2) * BOUNCE_PX;
+    }
+
+    const centerX = px + HALF_GRID;
+    const botY = py + GRID_SIZE - DOT_Y_INSET + offsetY;
+
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = machine.activeJobId ? CLR_INPUT_AMBER : CLR_DOT_EMPTY;
+    ctx.fillText('~~', centerX, botY);
   }
 
   // -------------------------------------------------------------------------
@@ -971,7 +1050,7 @@ export class Renderer {
   // Speech bubble (display machines)
   // -------------------------------------------------------------------------
 
-  private drawSpeechBubble(machine: Machine): void {
+  private drawSpeechBubble(machine: DisplayMachine): void {
     const age = performance.now() - machine.displayTime;
     const ctx = this.ctx;
 
@@ -1044,7 +1123,7 @@ export class Renderer {
   // Machine tooltip (command machines)
   // -------------------------------------------------------------------------
 
-  private drawMachineTooltip(machine: Machine): void {
+  private drawMachineTooltip(machine: CommandMachine): void {
     const ctx = this.ctx;
     const mx = cx(machine.x);
     const my = gy(machine.y);
@@ -1055,14 +1134,18 @@ export class Renderer {
     const lines: string[] = [];
     lines.push(`${cwd} $ ${command}`);
 
-    const inputBuffer = machine.pendingInput || '';
-    if (inputBuffer.length > 0) {
-      const display = inputBuffer.length > TOOLTIP_BUFFER_TRUNC
-        ? inputBuffer.slice(0, TOOLTIP_BUFFER_SLICE) + '...'
-        : inputBuffer;
-      lines.push(`> ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`);
+    if (machine.stream) {
+      lines.push(`~~ ${machine.streamBytesWritten} bytes written`);
     } else {
-      lines.push('>');
+      const inputBuffer = machine.pendingInput || '';
+      if (inputBuffer.length > 0) {
+        const display = inputBuffer.length > TOOLTIP_BUFFER_TRUNC
+          ? inputBuffer.slice(0, TOOLTIP_BUFFER_SLICE) + '...'
+          : inputBuffer;
+        lines.push(`> ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`);
+      } else {
+        lines.push('>');
+      }
     }
 
     const outputBuffer = machine.outputBuffer || '';
@@ -1138,6 +1221,91 @@ export class Renderer {
       }
 
       ctx.fillText(line, bubbleX + TOOLTIP_PADDING, ly, bubbleWidth - TOOLTIP_PADDING * 2);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Source tooltip (source machines)
+  // -------------------------------------------------------------------------
+
+  private drawSourceTooltip(machine: SourceMachine): void {
+    const ctx = this.ctx;
+    const mx = cx(machine.x);
+    const my = gy(machine.y);
+
+    const text = machine.sourceText || '';
+    const textLines = text.split('\n');
+    const maxPreviewLines = 4;
+    const previewLines = textLines.slice(0, maxPreviewLines);
+    const hasMore = textLines.length > maxPreviewLines;
+
+    const lines: string[] = [];
+    for (const line of previewLines) {
+      const display = line.length > TOOLTIP_BUFFER_TRUNC
+        ? line.slice(0, TOOLTIP_BUFFER_SLICE) + '...'
+        : line;
+      lines.push(display || '');
+    }
+    if (hasMore) {
+      lines.push(`... +${textLines.length - maxPreviewLines} more lines`);
+    }
+    if (lines.length === 0) lines.push('(empty)');
+
+    // Measure
+    ctx.font = FONT_TOOLTIP;
+    let maxWidth = 0;
+    for (const line of lines) {
+      const w = ctx.measureText(line).width;
+      if (w > maxWidth) maxWidth = w;
+    }
+
+    const bubbleWidth = Math.min(maxWidth + TOOLTIP_PADDING * 2, TOOLTIP_MAX_WIDTH);
+    const bubbleHeight = lines.length * TOOLTIP_LINE_HEIGHT + TOOLTIP_PADDING * 2;
+
+    let bubbleX = mx - bubbleWidth / 2;
+    let bubbleY = my - bubbleHeight - BUBBLE_GAP;
+
+    const ttEs = this.effectiveScale;
+    const ttVisLeft = this.camera.x + BUBBLE_MARGIN / ttEs;
+    const ttVisRight = this.camera.x + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
+    const ttVisTop = this.camera.y + BUBBLE_MARGIN / ttEs;
+    bubbleX = clamp(bubbleX, ttVisLeft, ttVisRight);
+    if (bubbleY < ttVisTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
+
+    // Background
+    ctx.fillStyle = CLR_TOOLTIP_BG;
+    ctx.beginPath();
+    ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, TOOLTIP_RADIUS);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = CLR_TOOLTIP_BORDER;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Pointer
+    ctx.fillStyle = CLR_TOOLTIP_BG;
+    ctx.beginPath();
+    if (bubbleY < my) {
+      ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
+      ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
+      ctx.lineTo(mx, bubbleY + bubbleHeight + BUBBLE_POINTER_HEIGHT);
+    } else {
+      ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY);
+      ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY);
+      ctx.lineTo(mx, bubbleY - BUBBLE_POINTER_HEIGHT);
+    }
+    ctx.fill();
+
+    // Lines
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < lines.length; i++) {
+      const ly = bubbleY + TOOLTIP_PADDING + i * TOOLTIP_LINE_HEIGHT;
+      ctx.fillStyle = (hasMore && i === lines.length - 1) ? CLR_TOOLTIP_INPUT : CLR_TOOLTIP_OUTPUT;
+      ctx.font = FONT_TOOLTIP;
+      ctx.fillText(lines[i], bubbleX + TOOLTIP_PADDING, ly, bubbleWidth - TOOLTIP_PADDING * 2);
     }
   }
 

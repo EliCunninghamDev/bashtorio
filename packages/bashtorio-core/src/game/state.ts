@@ -20,8 +20,6 @@ export interface GameState {
   selectedMachine: Machine | null;
   mouseDown: boolean;
 
-  sourceText: string;
-  sourcePos: number;
   lastEmitTime: number;
   emitDelay: number;
 
@@ -50,8 +48,6 @@ export function createInitialState(): GameState {
     selectedMachine: null,
     mouseDown: false,
 
-    sourceText: 'Hello World!\nBashtorio is cool.\nUnix pipes are fun!',
-    sourcePos: 0,
     lastEmitTime: 0,
     emitDelay: 150,
 

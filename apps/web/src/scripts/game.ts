@@ -13,9 +13,8 @@ if (app) {
     container: app,
     assetsPath: '/v86',
     soundAssetsUrl: '/sounds',
-    // Basic linux4.iso with network relay
-    relayUrl: 'ws://localhost:8081',
-    sourceText: 'Hello World!\nBashtorio is cool.\nUnix pipes are fun!',
+    basefs: 'alpine-fs.json',
+    stateImage: 'alpine-state.bin',
     onBootStatus: (status) => console.log('[Boot]', status),
     onReady: () => console.log('Game ready!'),
     onError: (err) => console.error('Boot error:', err),

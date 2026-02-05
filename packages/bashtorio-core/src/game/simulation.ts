@@ -7,6 +7,7 @@ import {
   DirDelta,
   type Packet,
   type Machine,
+  type CommandMachine,
   type BeltCell,
   type SplitterCell,
   type MachineCell,
@@ -28,44 +29,92 @@ const EMOJI_DELAY = 800; // ms between emoji emissions
 import type { GameState } from './state';
 import { getCell } from './grid';
 import { createPacket, isCellEmpty } from './packets';
+import type { GameEventBus } from '../events/GameEventBus';
 
 export interface SimulationCallbacks {
   onVMStatusChange?: (status: 'ready' | 'busy' | 'error') => void;
   onOutput?: (sinkId: number, content: string) => void;
   onMachineReceive?: (char: string) => void;
   onSinkReceive?: (char: string) => void;
+  events?: GameEventBus;
 }
 
 export function startSimulation(state: GameState): void {
   if (state.running) return;
 
   state.running = true;
-  state.sourcePos = 0;
   state.lastEmitTime = performance.now();
   state.packets = [];
   state.orphanedPackets = [];
 
   // Reset machines
   for (const machine of state.machines) {
-    machine.displayBuffer = '';
-    machine.displayText = '';
-    machine.displayTime = 0;
-    machine.pendingInput = '';
-    machine.outputBuffer = '';
-    machine.processing = false;
-    machine.lastInputTime = 0;
-    machine.autoStartRan = false;
-    machine.sourcePos = 0;
-    machine.flipperState = machine.flipperDir;
-    machine.constantPos = 0;
-    machine.counterCount = 0;
-    machine.delayQueue = [];
+    switch (machine.type) {
+      case MachineType.SOURCE:
+        machine.sourcePos = 0;
+        machine.lastEmitTime = 0;
+        break;
+      case MachineType.COMMAND:
+        machine.pendingInput = '';
+        machine.outputBuffer = '';
+        machine.processing = false;
+        machine.lastInputTime = 0;
+        machine.autoStartRan = false;
+        machine.activeJobId = '';
+        machine.lastPollTime = 0;
+        machine.bytesRead = 0;
+        machine.streamBytesWritten = 0;
+        machine.lastStreamWriteTime = 0;
+        break;
+      case MachineType.DISPLAY:
+        machine.displayBuffer = '';
+        machine.displayText = '';
+        machine.displayTime = 0;
+        machine.lastByteTime = 0;
+        break;
+      case MachineType.FLIPPER:
+        machine.flipperState = machine.flipperDir;
+        machine.outputBuffer = '';
+        break;
+      case MachineType.DUPLICATOR:
+      case MachineType.FILTER:
+      case MachineType.KEYBOARD:
+        machine.outputBuffer = '';
+        break;
+      case MachineType.CONSTANT:
+        machine.constantPos = 0;
+        machine.lastEmitTime = 0;
+        break;
+      case MachineType.COUNTER:
+        machine.counterCount = 0;
+        machine.outputBuffer = '';
+        break;
+      case MachineType.DELAY:
+        machine.delayQueue = [];
+        machine.outputBuffer = '';
+        break;
+      case MachineType.LINEFEED:
+        machine.lastEmitTime = 0;
+        break;
+      // SINK, EMOJI, NULL - no runtime state to reset
+    }
   }
 }
 
 export function stopSimulation(state: GameState): void {
   state.running = false;
   state.orphanedPackets = [];
+
+  // Stop active FIFO streams
+  if (state.vm) {
+    for (const machine of state.machines) {
+      if (machine.type === MachineType.COMMAND && machine.stream && machine.activeJobId) {
+        state.vm.stopStream(machine.activeJobId);
+        machine.activeJobId = '';
+        machine.processing = false;
+      }
+    }
+  }
 }
 
 export function findMachineOutput(
@@ -117,35 +166,165 @@ export function findFlipperOutputs(
   return outputs;
 }
 
-async function processCommandMachine(
+/** Non-blocking: start a file-based job for a command machine */
+function startCommandJob(
   state: GameState,
-  machine: Machine,
+  machine: CommandMachine,
   input: string,
   callbacks: SimulationCallbacks
-): Promise<string> {
-  if (!state.vm || !state.vm.ready) return input;
+): void {
+  if (!state.vm || !state.vm.ready) return;
 
   const machineId = `m_${machine.x}_${machine.y}`;
-
+  const startTime = performance.now();
+  machine.processing = true;
   callbacks.onVMStatusChange?.('busy');
-  try {
-    let result: { output: string; cwd: string };
-    if (input && input.length > 0) {
-      result = await state.vm.pipeInShell(machineId, input, machine.command);
-    } else {
-      result = await state.vm.execInShell(machineId, machine.command);
-    }
-    // Update machine's current working directory
-    if (result.cwd) {
-      machine.cwd = result.cwd;
-    }
-    callbacks.onVMStatusChange?.('ready');
-    return result.output || '';
-  } catch (e) {
-    console.error('[CMD] Error:', e);
-    callbacks.onVMStatusChange?.('error');
-    return '';
+  callbacks.events?.emit('commandStart', { machineId, command: machine.command, input });
+
+  // Build the effective command - in args mode, append input as argument
+  let effectiveCmd = machine.command;
+  let effectiveStdin = input;
+  if (machine.inputMode === 'args' && input && input.length > 0) {
+    const arg = input.replace(/\n$/, '');
+    effectiveCmd = `${machine.command} ${arg}`;
+    effectiveStdin = '';
   }
+
+  // Use file-based I/O if machine is async and 9p is available, otherwise serial
+  if (machine.stream && state.vm.fs9pReady) {
+    state.vm.startJob(machineId, effectiveCmd, effectiveStdin || undefined)
+      .then(jobId => {
+        machine.activeJobId = jobId;
+        machine.bytesRead = 0;
+        machine.lastPollTime = performance.now();
+        // Store startTime for pollCommandJob to use
+        (machine as any)._cmdStartTime = startTime;
+        console.log(`[CMD] Started job ${jobId} for ${machineId}`);
+      })
+      .catch(e => {
+        console.error('[CMD] Failed to start job:', e);
+        machine.processing = false;
+        callbacks.onVMStatusChange?.('error');
+        callbacks.events?.emit('commandComplete', {
+          machineId, command: machine.command, output: String(e), durationMs: performance.now() - startTime, error: true,
+        });
+      });
+  } else {
+    // Serial fallback: blocking exec via serial markers
+    const execPromise = effectiveStdin && effectiveStdin.length > 0
+      ? state.vm.pipeInShell(machineId, effectiveStdin, effectiveCmd, { forceSerial: !machine.stream })
+      : state.vm.execInShell(machineId, effectiveCmd, { forceSerial: !machine.stream });
+
+    execPromise.then(result => {
+      if (result.cwd) machine.cwd = result.cwd;
+      const output = result.output || '';
+      if (output && output !== '(timeout)' && output !== '(error)') {
+        machine.outputBuffer += output;
+        if (!output.endsWith('\n')) {
+          machine.outputBuffer += '\n';
+        }
+      }
+      machine.lastCommandTime = performance.now();
+      machine.processing = false;
+      callbacks.onVMStatusChange?.('ready');
+      callbacks.events?.emit('commandComplete', {
+        machineId, command: machine.command, output, durationMs: performance.now() - startTime, error: false,
+      });
+    }).catch(e => {
+      console.error('[CMD] Legacy exec error:', e);
+      machine.processing = false;
+      callbacks.onVMStatusChange?.('error');
+      callbacks.events?.emit('commandComplete', {
+        machineId, command: machine.command, output: String(e), durationMs: performance.now() - startTime, error: true,
+      });
+    });
+  }
+}
+
+/** Non-blocking: poll a running file-based job for new output */
+function pollCommandJob(
+  state: GameState,
+  machine: CommandMachine,
+  callbacks: SimulationCallbacks
+): void {
+  if (!state.vm || !machine.activeJobId) return;
+
+  const now = performance.now();
+  // Throttle polls to ~100ms
+  if (now - machine.lastPollTime < 100) return;
+  machine.lastPollTime = now;
+
+  const machineId = `m_${machine.x}_${machine.y}`;
+  const cmdStartTime: number = (machine as any)._cmdStartTime || now;
+
+  state.vm.pollJob(machine.activeJobId).then(result => {
+    if (result.newOutput) {
+      machine.outputBuffer += result.newOutput;
+    }
+    if (result.done) {
+      if (result.cwd) machine.cwd = result.cwd;
+      machine.lastCommandTime = performance.now();
+      // Ensure output ends with newline
+      if (machine.outputBuffer.length > 0 && !machine.outputBuffer.endsWith('\n')) {
+        machine.outputBuffer += '\n';
+      }
+      // Cleanup
+      const jobId = machine.activeJobId;
+      machine.activeJobId = '';
+      machine.processing = false;
+      callbacks.onVMStatusChange?.('ready');
+      state.vm?.cleanupJob(jobId);
+      console.log(`[CMD] Job ${jobId} completed`);
+      callbacks.events?.emit('commandComplete', {
+        machineId, command: machine.command, output: machine.outputBuffer, durationMs: performance.now() - cmdStartTime, error: false, stream: machine.stream,
+      });
+    }
+  }).catch(e => {
+    console.error('[CMD] Poll error:', e);
+    callbacks.events?.emit('commandComplete', {
+      machineId, command: machine.command, output: String(e), durationMs: performance.now() - cmdStartTime, error: true, stream: machine.stream,
+    });
+  });
+}
+
+/** Start a persistent FIFO-based stream for a stream-mode command machine */
+function startStreamJob(
+  state: GameState,
+  machine: CommandMachine,
+  callbacks: SimulationCallbacks
+): void {
+  if (!state.vm || !state.vm.ready || !state.vm.fs9pReady) return;
+
+  const machineId = `m_${machine.x}_${machine.y}`;
+  machine.processing = true;
+  if (machine.autoStart) machine.autoStartRan = true;
+  callbacks.onVMStatusChange?.('busy');
+  callbacks.events?.emit('commandStart', { machineId, command: machine.command, input: '', stream: true });
+
+  state.vm.startStream(machineId, machine.command)
+    .then(jobId => {
+      machine.activeJobId = jobId;
+      machine.bytesRead = 0;
+      machine.lastPollTime = performance.now();
+      machine.processing = false;
+      (machine as any)._cmdStartTime = performance.now();
+      console.log(`[CMD] Started stream ${jobId} for ${machineId}`);
+
+      // Flush any pending input that arrived while starting
+      if (machine.pendingInput.length > 0 && state.vm) {
+        const len = machine.pendingInput.length;
+        machine.streamBytesWritten += len;
+        machine.lastStreamWriteTime = performance.now();
+        callbacks.events?.emit('streamWrite', { machineId, bytes: len });
+        state.vm.writeToStream(jobId, machine.pendingInput);
+        machine.pendingInput = '';
+      }
+    })
+    .catch(e => {
+      console.error('[CMD] Failed to start stream:', e);
+      machine.processing = false;
+      callbacks.onVMStatusChange?.('error');
+    });
 }
 
 function deliverToMachine(state: GameState, machine: Machine, content: string, callbacks: SimulationCallbacks): void {
@@ -166,7 +345,11 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, c
   } else if (machine.type === MachineType.COMMAND) {
     machine.pendingInput += content;
     machine.lastInputTime = performance.now();
-    callbacks.onMachineReceive?.(content);
+    if (machine.stream) {
+      callbacks.events?.emit('streamWrite', { machineId: `m_${machine.x}_${machine.y}`, bytes: 1 });
+    } else {
+      callbacks.onMachineReceive?.(content);
+    }
   }
   // NULL machines silently discard packets
   // DUPLICATOR machines buffer input for replication to all outputs
@@ -340,33 +523,17 @@ function updatePacket(
   return true;
 }
 
-async function processCommandInput(
+function processCommandInput(
   state: GameState,
-  machine: Machine,
+  machine: CommandMachine,
   callbacks: SimulationCallbacks
-): Promise<void> {
+): void {
   if (machine.processing) return;
 
   // AutoStart commands run without input
   if (machine.autoStart && !machine.autoStartRan) {
     machine.autoStartRan = true;
-    machine.processing = true;
-
-    try {
-      const output = await processCommandMachine(state, machine, '', callbacks);
-      if (output && output !== '(timeout)' && output !== '(error)') {
-        machine.outputBuffer += output;
-        if (!output.endsWith('\n')) {
-          machine.outputBuffer += '\n';
-        }
-        console.log('[CMD] AutoStart output:', output.substring(0, 50));
-      }
-    } catch (e) {
-      console.error('[CMD] AutoStart error:', e);
-    }
-
-    machine.lastCommandTime = performance.now();
-    machine.processing = false;
+    startCommandJob(state, machine, '', callbacks);
     return;
   }
 
@@ -379,22 +546,7 @@ async function processCommandInput(
   const line = machine.pendingInput.substring(0, newlineIdx + 1);
   machine.pendingInput = machine.pendingInput.substring(newlineIdx + 1);
 
-  machine.processing = true;
-
-  try {
-    const output = await processCommandMachine(state, machine, line, callbacks);
-    if (output && output !== '(timeout)' && output !== '(error)') {
-      machine.outputBuffer += output;
-      if (output.length > 0 && !output.endsWith('\n')) {
-        machine.outputBuffer += '\n';
-      }
-    }
-  } catch (e) {
-    console.error('[CMD] Error:', e);
-  }
-
-  machine.lastCommandTime = performance.now();
-  machine.processing = false;
+  startCommandJob(state, machine, line, callbacks);
 }
 
 function emitFromMachine(state: GameState, machine: Machine): boolean {
@@ -404,8 +556,8 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
   if (!isCellEmpty(state, output.x, output.y)) return false;
 
   if (machine.type === MachineType.SOURCE) {
-    if (machine.sourcePos < state.sourceText.length) {
-      const char = state.sourceText[machine.sourcePos];
+    if (machine.sourcePos < machine.sourceText.length) {
+      const char = machine.sourceText[machine.sourcePos];
       createPacket(state, output.x, output.y, char, output.dir);
       machine.sourcePos++;
 
@@ -468,7 +620,7 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
   } else if (machine.type === MachineType.CONSTANT) {
     if (machine.constantText.length === 0) return false;
     const now = performance.now();
-    const adjustedDelay = machine.constantInterval / state.timescale;
+    const adjustedDelay = machine.emitInterval / state.timescale;
     if (now - machine.lastEmitTime > adjustedDelay) {
       const char = machine.constantText[machine.constantPos];
       createPacket(state, output.x, output.y, char, output.dir);
@@ -528,9 +680,33 @@ export function updateSimulation(
   // Process command machines and check display timeouts
   for (const machine of state.machines) {
     if (machine.type === MachineType.COMMAND) {
-      if (!machine.processing) {
-        if ((machine.autoStart && !machine.autoStartRan) || machine.pendingInput.length > 0) {
-          processCommandInput(state, machine, callbacks);
+      if (machine.stream && state.vm?.fs9pReady) {
+        // Stream mode: FIFO-based persistent command
+        if (machine.activeJobId) {
+          // Write any pending input to the FIFO
+          if (machine.pendingInput.length > 0) {
+            const len = machine.pendingInput.length;
+            machine.streamBytesWritten += len;
+            machine.lastStreamWriteTime = performance.now();
+            callbacks.events?.emit('streamWrite', { machineId: `m_${machine.x}_${machine.y}`, bytes: len });
+            state.vm.writeToStream(machine.activeJobId, machine.pendingInput);
+            machine.pendingInput = '';
+          }
+          // Poll for output
+          pollCommandJob(state, machine, callbacks);
+        } else if (!machine.processing) {
+          if ((machine.autoStart && !machine.autoStartRan) || machine.pendingInput.length > 0) {
+            startStreamJob(state, machine, callbacks);
+          }
+        }
+      } else {
+        // Non-stream: one-shot job per input line
+        if (machine.activeJobId) {
+          pollCommandJob(state, machine, callbacks);
+        } else if (!machine.processing) {
+          if ((machine.autoStart && !machine.autoStartRan) || machine.pendingInput.length > 0) {
+            processCommandInput(state, machine, callbacks);
+          }
         }
       }
     } else if (machine.type === MachineType.DISPLAY) {

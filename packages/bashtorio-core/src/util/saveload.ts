@@ -11,7 +11,7 @@ export interface SaveData {
   gridRows: number;
   grid: SerializedCell[][];
   machines: SerializedMachine[];
-  sourceText: string;
+  sourceText?: string;
   sinkIdCounter: number;
 }
 
@@ -33,11 +33,15 @@ interface SerializedMachine {
   flipperTrigger?: string;
   flipperDir?: number;
   constantText?: string;
-  constantInterval?: number;
+  constantInterval?: number; // legacy: old saves used this for CONSTANT
   filterByte?: string;
   filterMode?: 'pass' | 'block';
   counterTrigger?: string;
   delayMs?: number;
+  stream?: boolean;
+  async?: boolean; // legacy: old saves used this for stream
+  inputMode?: 'pipe' | 'args';
+  sourceText?: string;
 }
 
 const SAVE_VERSION = 1;
@@ -73,23 +77,46 @@ export function serializeState(state: GameState): SaveData {
   }
 
   // Serialize machines
-  const machines: SerializedMachine[] = state.machines.map(m => ({
-    x: m.x,
-    y: m.y,
-    type: m.type,
-    command: m.command,
-    autoStart: m.autoStart,
-    sinkId: m.sinkId,
-    emitInterval: m.emitInterval,
-    flipperTrigger: m.flipperTrigger,
-    flipperDir: m.flipperDir,
-    constantText: m.constantText,
-    constantInterval: m.constantInterval,
-    filterByte: m.filterByte,
-    filterMode: m.filterMode,
-    counterTrigger: m.counterTrigger,
-    delayMs: m.delayMs,
-  }));
+  const machines: SerializedMachine[] = state.machines.map(m => {
+    const base: SerializedMachine = { x: m.x, y: m.y, type: m.type, command: '', autoStart: false, sinkId: 0 };
+    switch (m.type) {
+      case MachineType.SOURCE:
+        base.emitInterval = m.emitInterval;
+        base.sourceText = m.sourceText;
+        break;
+      case MachineType.SINK:
+        base.sinkId = m.sinkId;
+        break;
+      case MachineType.COMMAND:
+        base.command = m.command;
+        base.autoStart = m.autoStart;
+        base.stream = m.stream;
+        if (m.inputMode !== 'pipe') base.inputMode = m.inputMode;
+        break;
+      case MachineType.LINEFEED:
+        base.emitInterval = m.emitInterval;
+        break;
+      case MachineType.FLIPPER:
+        base.flipperTrigger = m.flipperTrigger;
+        base.flipperDir = m.flipperDir;
+        break;
+      case MachineType.CONSTANT:
+        base.constantText = m.constantText;
+        base.emitInterval = m.emitInterval;
+        break;
+      case MachineType.FILTER:
+        base.filterByte = m.filterByte;
+        base.filterMode = m.filterMode;
+        break;
+      case MachineType.COUNTER:
+        base.counterTrigger = m.counterTrigger;
+        break;
+      case MachineType.DELAY:
+        base.delayMs = m.delayMs;
+        break;
+    }
+    return base;
+  });
 
   return {
     version: SAVE_VERSION,
@@ -97,7 +124,6 @@ export function serializeState(state: GameState): SaveData {
     gridRows: state.gridRows,
     grid,
     machines,
-    sourceText: state.sourceText,
     sinkIdCounter: state.sinkIdCounter,
   };
 }
@@ -122,42 +148,56 @@ export function deserializeState(state: GameState, data: SaveData): void {
 
   // Restore machines first (we need them for grid references)
   for (const sm of data.machines) {
-    const machine: Machine = {
-      x: sm.x,
-      y: sm.y,
-      type: sm.type,
-      command: sm.command,
-      autoStart: sm.autoStart,
-      sinkId: sm.sinkId,
-      // Reset transient state
-      displayBuffer: '',
-      displayText: '',
-      displayTime: 0,
-      lastByteTime: 0,
-      pendingInput: '',
-      outputBuffer: '',
-      processing: false,
-      lastInputTime: 0,
-      autoStartRan: false,
-      cwd: '/',
-      lastEmojiTime: 0,
-      lastCommandTime: 0,
-      emitInterval: sm.emitInterval ?? 500,
-      lastEmitTime: 0,
-      sourcePos: 0,
-      flipperTrigger: sm.flipperTrigger ?? '\n',
-      flipperDir: sm.flipperDir ?? 0,
-      flipperState: sm.flipperDir ?? 0,
-      constantText: sm.constantText ?? 'hello\n',
-      constantInterval: sm.constantInterval ?? 500,
-      constantPos: 0,
-      filterByte: sm.filterByte ?? '\n',
-      filterMode: sm.filterMode ?? 'pass',
-      counterTrigger: sm.counterTrigger ?? '\n',
-      counterCount: 0,
-      delayMs: sm.delayMs ?? 1000,
-      delayQueue: [],
-    };
+    const base = { x: sm.x, y: sm.y, lastCommandTime: 0 };
+    let machine: Machine;
+    switch (sm.type) {
+      case MachineType.SOURCE:
+        machine = { ...base, type: MachineType.SOURCE, sourceText: sm.sourceText ?? data.sourceText ?? '', sourcePos: 0, emitInterval: sm.emitInterval ?? 500, lastEmitTime: 0 };
+        break;
+      case MachineType.SINK:
+        machine = { ...base, type: MachineType.SINK, sinkId: sm.sinkId };
+        break;
+      case MachineType.COMMAND:
+        machine = { ...base, type: MachineType.COMMAND, command: sm.command, autoStart: sm.autoStart, stream: sm.stream ?? sm.async ?? false, inputMode: sm.inputMode ?? 'pipe', pendingInput: '', outputBuffer: '', processing: false, lastInputTime: 0, autoStartRan: false, cwd: '/', activeJobId: '', lastPollTime: 0, bytesRead: 0, streamBytesWritten: 0, lastStreamWriteTime: 0 };
+        break;
+      case MachineType.DISPLAY:
+        machine = { ...base, type: MachineType.DISPLAY, displayBuffer: '', displayText: '', displayTime: 0, lastByteTime: 0 };
+        break;
+      case MachineType.EMOJI:
+        machine = { ...base, type: MachineType.EMOJI, lastEmojiTime: 0 };
+        break;
+      case MachineType.NULL:
+        machine = { ...base, type: MachineType.NULL };
+        break;
+      case MachineType.LINEFEED:
+        machine = { ...base, type: MachineType.LINEFEED, emitInterval: sm.emitInterval ?? 500, lastEmitTime: 0 };
+        break;
+      case MachineType.FLIPPER:
+        machine = { ...base, type: MachineType.FLIPPER, flipperTrigger: sm.flipperTrigger ?? '\n', flipperDir: sm.flipperDir ?? 0, flipperState: sm.flipperDir ?? 0, outputBuffer: '' };
+        break;
+      case MachineType.DUPLICATOR:
+        machine = { ...base, type: MachineType.DUPLICATOR, outputBuffer: '' };
+        break;
+      case MachineType.CONSTANT:
+        machine = { ...base, type: MachineType.CONSTANT, constantText: sm.constantText ?? 'hello\n', emitInterval: sm.emitInterval ?? sm.constantInterval ?? 500, constantPos: 0, lastEmitTime: 0 };
+        break;
+      case MachineType.FILTER:
+        machine = { ...base, type: MachineType.FILTER, filterByte: sm.filterByte ?? '\n', filterMode: sm.filterMode ?? 'pass', outputBuffer: '' };
+        break;
+      case MachineType.COUNTER:
+        machine = { ...base, type: MachineType.COUNTER, counterTrigger: sm.counterTrigger ?? '\n', counterCount: 0, outputBuffer: '' };
+        break;
+      case MachineType.DELAY:
+        machine = { ...base, type: MachineType.DELAY, delayMs: sm.delayMs ?? 1000, delayQueue: [], outputBuffer: '' };
+        break;
+      case MachineType.KEYBOARD:
+        machine = { ...base, type: MachineType.KEYBOARD, outputBuffer: '' };
+        break;
+      default:
+        // Fallback for unknown types in old saves
+        machine = { ...base, type: MachineType.NULL };
+        break;
+    }
     state.machines.push(machine);
   }
 
@@ -191,7 +231,6 @@ export function deserializeState(state: GameState, data: SaveData): void {
   }
 
   // Restore other state
-  state.sourceText = data.sourceText ?? '';
   state.sinkIdCounter = data.sinkIdCounter ?? 1;
 }
 

@@ -70,11 +70,10 @@ function download(url, dest) {
   });
 }
 
-// Files to download from copy.sh/v86
+// Files to download from copy.sh/v86 (BIOS only - Alpine rootfs built separately)
 const downloads = [
   { url: 'https://copy.sh/v86/bios/seabios.bin', file: 'seabios.bin' },
   { url: 'https://copy.sh/v86/bios/vgabios.bin', file: 'vgabios.bin' },
-  { url: 'https://copy.sh/v86/images/linux4.iso', file: 'linux4.iso' },
 ];
 
 async function main() {
@@ -95,8 +94,10 @@ async function main() {
   }
   
   console.log('\n✓ Setup complete!\n');
-  console.log('Run: npx serve public');
-  console.log('Open: http://localhost:3000\n');
+  console.log('Next steps:');
+  console.log('  1. Build Alpine rootfs: bash scripts/alpine/build.sh');
+  console.log('  2. Generate state file: node scripts/alpine/build-state.js');
+  console.log('  3. Run dev server:      pnpm dev\n');
 }
 
 main().catch(console.error);

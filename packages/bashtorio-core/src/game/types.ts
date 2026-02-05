@@ -67,52 +67,146 @@ export interface MachineCell {
 
 export type Cell = EmptyCell | BeltCell | SplitterCell | MachineCell;
 
-export interface Machine {
+export interface MachineBase {
   x: number;
   y: number;
-  type: MachineType;
+  lastCommandTime: number; // flash effect on byte receive
+}
+
+export interface EmitTimer {
+  emitInterval: number;
+  lastEmitTime: number;
+}
+
+export interface SourceMachine extends MachineBase, EmitTimer {
+  type: MachineType.SOURCE;
+  sourceText: string;
+  sourcePos: number;
+}
+
+export interface SinkMachine extends MachineBase {
+  type: MachineType.SINK;
+  sinkId: number;
+}
+
+export interface CommandMachine extends MachineBase {
+  type: MachineType.COMMAND;
   command: string;
   autoStart: boolean;
-  // For display machine
-  displayBuffer: string;
-  displayText: string;
-  displayTime: number;
-  lastByteTime: number;
-  // For command machine
+  stream: boolean;
+  inputMode: 'pipe' | 'args';
   pendingInput: string;
   outputBuffer: string;
   processing: boolean;
   lastInputTime: number;
   autoStartRan: boolean;
-  cwd: string; // Current working directory
-  // For sink machine
-  sinkId: number;
-  // For emoji machine
+  cwd: string;
+  activeJobId: string;
+  lastPollTime: number;
+  bytesRead: number;
+  streamBytesWritten: number;
+  lastStreamWriteTime: number;
+}
+
+export interface DisplayMachine extends MachineBase {
+  type: MachineType.DISPLAY;
+  displayBuffer: string;
+  displayText: string;
+  displayTime: number;
+  lastByteTime: number;
+}
+
+export interface EmojiMachine extends MachineBase {
+  type: MachineType.EMOJI;
   lastEmojiTime: number;
-  // Flash effect timestamp
-  lastCommandTime: number;
-  // For linefeed machine
-  emitInterval: number;
-  lastEmitTime: number;
-  // For source machine
-  sourcePos: number;
-  // For flipper machine
+}
+
+export interface NullMachine extends MachineBase {
+  type: MachineType.NULL;
+}
+
+export interface LinefeedMachine extends MachineBase, EmitTimer {
+  type: MachineType.LINEFEED;
+}
+
+export interface FlipperMachine extends MachineBase {
+  type: MachineType.FLIPPER;
   flipperTrigger: string;
   flipperDir: number;   // Initial direction (Direction), persisted
   flipperState: number; // Current runtime direction (Direction), reset on sim start
-  // For constant machine
+  outputBuffer: string;
+}
+
+export interface DuplicatorMachine extends MachineBase {
+  type: MachineType.DUPLICATOR;
+  outputBuffer: string;
+}
+
+export interface ConstantMachine extends MachineBase, EmitTimer {
+  type: MachineType.CONSTANT;
   constantText: string;
-  constantInterval: number;
   constantPos: number;
-  // For filter machine
+}
+
+export interface FilterMachine extends MachineBase {
+  type: MachineType.FILTER;
   filterByte: string;
   filterMode: 'pass' | 'block';
-  // For counter machine
+  outputBuffer: string;
+}
+
+export interface CounterMachine extends MachineBase {
+  type: MachineType.COUNTER;
   counterTrigger: string;
   counterCount: number;
-  // For delay machine
+  outputBuffer: string;
+}
+
+export interface DelayMachine extends MachineBase {
+  type: MachineType.DELAY;
   delayMs: number;
   delayQueue: { char: string; time: number }[];
+  outputBuffer: string;
+}
+
+export interface KeyboardMachine extends MachineBase {
+  type: MachineType.KEYBOARD;
+  outputBuffer: string;
+}
+
+export type Machine =
+  | SourceMachine
+  | SinkMachine
+  | CommandMachine
+  | DisplayMachine
+  | EmojiMachine
+  | NullMachine
+  | LinefeedMachine
+  | FlipperMachine
+  | DuplicatorMachine
+  | ConstantMachine
+  | FilterMachine
+  | CounterMachine
+  | DelayMachine
+  | KeyboardMachine;
+
+export type BufferingMachine =
+  | CommandMachine
+  | FlipperMachine
+  | DuplicatorMachine
+  | FilterMachine
+  | CounterMachine
+  | DelayMachine
+  | KeyboardMachine;
+
+export function hasOutputBuffer(m: Machine): m is BufferingMachine {
+  return 'outputBuffer' in m;
+}
+
+export type EmittingMachine = SourceMachine | LinefeedMachine | ConstantMachine;
+
+export function hasEmitTimer(m: Machine): m is EmittingMachine {
+  return 'emitInterval' in m;
 }
 
 export interface Packet {

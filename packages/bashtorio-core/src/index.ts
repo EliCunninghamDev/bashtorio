@@ -27,6 +27,10 @@ export { serializeState, deserializeState, downloadSave, uploadSave, type SaveDa
 // Re-export presets
 export { PRESETS, type Preset } from './util/presets';
 
+// Re-export themes
+export { THEMES, getThemeById, applyUITheme, type ColorTheme } from './util/themes';
+export { applyRendererTheme } from './render/renderer';
+
 import { LinuxVM } from './vm';
 import { Renderer } from './render';
 import { InputHandler, type InputCallbacks } from './ui';
@@ -34,13 +38,16 @@ import { ByteInput } from './ui/components/ByteInput';
 import { createInitialState, type GameState } from './game/state';
 import { initGrid } from './game/grid';
 import { updateSimulation, type SimulationCallbacks } from './game/simulation';
-import { GRID_COLS, GRID_ROWS, DirArrows, MachineType, type CursorMode, type PlaceableType } from './game/types';
+import { GRID_COLS, GRID_ROWS, MachineType, type CursorMode, type PlaceableType } from './game/types';
 import { ansiToHtml } from './util/ansi';
 import { downloadSave, uploadSave, deserializeState } from './util/saveload';
 import { PRESETS } from './util/presets';
-import { loadSettings, saveSettings } from './util/settings';
+import { loadSettings, saveSettings, type Settings } from './util/settings';
+import { THEMES, getThemeById, applyUITheme } from './util/themes';
+import { applyRendererTheme } from './render/renderer';
 import { SoundSystem } from './audio/SoundSystem';
 import { GameEventBus } from './events/GameEventBus';
+import acknowledgements from './generated/acknowledgements.json';
 
 export interface BashtorioConfig {
   /** Container element to mount the game into */
@@ -51,14 +58,14 @@ export interface BashtorioConfig {
   linuxImage?: string;
   /** Pre-booted state filename (if provided, skips boot for instant start) */
   stateImage?: string;
-  /** 9p filesystem URL (for Arch Linux, point to https://k.copy.sh/arch/) */
+  /** 9p filesystem URL (for rootfs flat directory) */
   filesystemUrl?: string;
+  /** 9p basefs JSON manifest - when set, enables 9p-root boot mode */
+  basefs?: string;
   /** Optional WebSocket relay URL for networking */
   relayUrl?: string;
   /** Path to sound assets (default: assetsPath + '/sounds') */
   soundAssetsUrl?: string;
-  /** Initial source text */
-  sourceText?: string;
   /** Callback when boot status changes */
   onBootStatus?: (status: string) => void;
   /** Callback when boot completes */
@@ -96,7 +103,7 @@ export interface BashtorioInstance {
  * Mount a Bashtorio game instance into a container element.
  */
 export async function mount(config: BashtorioConfig): Promise<BashtorioInstance> {
-  const { container, assetsPath, linuxImage = 'linux4.iso', stateImage, filesystemUrl, relayUrl, soundAssetsUrl, sourceText, onBootStatus, onReady, onError } = config;
+  const { container, assetsPath, linuxImage = 'linux4.iso', stateImage, filesystemUrl, basefs, relayUrl, soundAssetsUrl, onBootStatus, onReady, onError } = config;
 
   // Create DOM structure
   container.innerHTML = `
@@ -108,7 +115,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           <div class="boot-status">Initializing...</div>
           <div class="boot-terminal">
             <div class="screen-container">
-              <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+              <div style="white-space: pre; font: 14px monospace"></div>
               <canvas style="display: none"></canvas>
             </div>
           </div>
@@ -126,15 +133,27 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
             </div>
             <div class="output-sinks"></div>
           </div>
-          <div class="bashtorio-source">
+          <div class="bashtorio-streams">
             <div class="panel-header">
-              <span>📝 Source Data</span>
+              <span>📡 Streams</span>
+              <button class="clear-streams-btn">Clear</button>
             </div>
-            <textarea class="source-input" placeholder="Enter data to send through the pipeline..."></textarea>
+            <div class="stream-entries"></div>
           </div>
-          <div class="bashtorio-terminal">
+          <div class="bashtorio-cmdlog">
             <div class="panel-header">
+              <span>🖥️ Command Log</span>
+              <div class="panel-header-actions">
+                <button class="cmdlog-autoscroll-btn active" title="Auto-scroll">▼</button>
+                <button class="clear-cmdlog-btn">Clear</button>
+              </div>
+            </div>
+            <div class="cmdlog-entries"></div>
+          </div>
+          <div class="bashtorio-terminal collapsed">
+            <div class="panel-header terminal-toggle" style="cursor: pointer;">
               <span>🖥️ VM Terminal</span>
+              <span class="terminal-toggle-icon">▶</span>
             </div>
             <div class="game-terminal"></div>
           </div>
@@ -232,6 +251,14 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
                   <input type="checkbox" class="cmd-autostart">
                   <span>Auto-run</span>
                 </label>
+                <label class="cmd-autostart-label">
+                  <input type="checkbox" class="cmd-stream">
+                  <span>Stream</span>
+                </label>
+                <select class="cmd-input-mode modal-select">
+                  <option value="pipe">Pipe</option>
+                  <option value="args">Args</option>
+                </select>
               </div>
             </div>
             <div class="cmd-terminal-body">
@@ -280,6 +307,15 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           <h3>Flipper</h3>
           <p class="modal-description">Set the trigger byte that flips the output direction.</p>
           <div class="form-group flip-byte-input-mount"></div>
+          <div class="form-group">
+            <label>Direction:</label>
+            <select class="flip-dir modal-select">
+              <option value="0">Right →</option>
+              <option value="1">Down ↓</option>
+              <option value="2">Left ←</option>
+              <option value="3">Up ↑</option>
+            </select>
+          </div>
           <div class="modal-buttons">
             <button class="flip-cancel">Cancel</button>
             <button class="flip-save primary">Save</button>
@@ -315,7 +351,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           <div class="form-group filter-byte-input-mount"></div>
           <div class="form-group">
             <label>Mode:</label>
-            <select class="filter-mode-select">
+            <select class="filter-mode-select modal-select">
               <option value="pass">Pass (only matching)</option>
               <option value="block">Block (everything except)</option>
             </select>
@@ -352,6 +388,28 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           <div class="modal-buttons">
             <button class="delay-cancel">Cancel</button>
             <button class="delay-save primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Source Modal -->
+      <div class="bashtorio-modal source-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Source</h3>
+          <p class="modal-description">Text data emitted one character at a time.</p>
+          <div class="form-group">
+            <label>Text:</label>
+            <textarea class="source-text" rows="6" placeholder="Enter data to emit..."></textarea>
+            <div class="source-newline-warn" style="display: none;">⚠ No trailing newline - most Unix tools expect one</div>
+          </div>
+          <div class="form-group">
+            <label>Interval (ms):</label>
+            <input type="number" class="source-interval" min="50" max="10000" step="50" value="500">
+          </div>
+          <div class="modal-buttons">
+            <button class="source-upload">Upload File</button>
+            <button class="source-cancel">Cancel</button>
+            <button class="source-save primary">Save</button>
           </div>
         </div>
       </div>
@@ -393,6 +451,56 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         </div>
       </div>
 
+      <!-- Settings Modal -->
+      <div class="bashtorio-modal settings-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Settings</h3>
+          <div class="form-group">
+            <label>Color Theme:</label>
+            <select class="theme-select">
+              ${THEMES.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Ambient Volume: <span class="ambient-vol-value">100%</span></label>
+            <input type="range" class="ambient-vol-slider" min="0" max="1" step="0.05" value="1">
+          </div>
+          <div class="form-group">
+            <label>Machine Volume: <span class="machine-vol-value">100%</span></label>
+            <input type="range" class="machine-vol-slider" min="0" max="1" step="0.05" value="1">
+          </div>
+          <div class="modal-buttons">
+            <button class="ack-open-btn">Acknowledgements</button>
+            <button class="settings-close primary">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Acknowledgements Modal -->
+      <div class="bashtorio-modal acknowledgements-modal" style="display: none;">
+        <div class="modal-content ack-modal-content">
+          <h3>Acknowledgements</h3>
+          <div class="acknowledgements-list">
+            ${acknowledgements.map(pkg => `
+              <div class="ack-item">
+                <div class="ack-item-header">
+                  <span class="ack-name">${pkg.name} <span class="ack-version">v${pkg.version}</span></span>
+                  <span class="ack-license">${pkg.license}</span>
+                </div>
+                <div class="ack-item-meta">
+                  ${pkg.author ? `<span class="ack-author">${pkg.author}</span>` : ''}
+                  ${pkg.url ? `${pkg.author ? ' · ' : ''}<a class="ack-url" href="${pkg.url}" target="_blank" rel="noopener">${pkg.url.replace(/^https?:\/\//, '')}</a>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="ack-footer">
+            <span>${acknowledgements.length} packages · ${new Set(acknowledgements.map(p => p.license).filter(Boolean)).size} unique licenses</span>
+            <button class="ack-close primary">Close</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Toast -->
       <div class="bashtorio-toast" style="display: none;"></div>
     </div>
@@ -405,7 +513,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   const canvas = container.querySelector('.game-canvas') as HTMLCanvasElement;
   const toolbar = container.querySelector('.bashtorio-toolbar') as HTMLElement;
   const outputSinks = container.querySelector('.output-sinks') as HTMLElement;
-  const sourceInput = container.querySelector('.source-input') as HTMLTextAreaElement;
   const gameTerminal = container.querySelector('.game-terminal') as HTMLElement;
   const commandModal = container.querySelector('.command-modal') as HTMLElement;
   const linefeedModal = container.querySelector('.linefeed-modal') as HTMLElement;
@@ -414,8 +521,14 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   const filterModal = container.querySelector('.filter-modal') as HTMLElement;
   const counterModal = container.querySelector('.counter-modal') as HTMLElement;
   const delayModal = container.querySelector('.delay-modal') as HTMLElement;
+  const sourceModal = container.querySelector('.source-modal') as HTMLElement;
   const networkModal = container.querySelector('.network-modal') as HTMLElement;
   const presetsModal = container.querySelector('.presets-modal') as HTMLElement;
+  const settingsModal = container.querySelector('.settings-modal') as HTMLElement;
+  const acknowledgmentsModal = container.querySelector('.acknowledgements-modal') as HTMLElement;
+  const themeSelect = settingsModal.querySelector('.theme-select') as HTMLSelectElement;
+  const cmdlogEntries = container.querySelector('.cmdlog-entries') as HTMLElement;
+  const streamEntries = container.querySelector('.stream-entries') as HTMLElement;
   const toast = container.querySelector('.bashtorio-toast') as HTMLElement;
 
   // Toast display logic
@@ -459,9 +572,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   const settings = loadSettings();
   const state = createInitialState();
   state.timescale = settings.speed;
-  if (sourceText) {
-    state.sourceText = sourceText;
-  }
 
   // Create VM
   const vm = new LinuxVM();
@@ -478,6 +588,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       linuxImage,
       stateImage,
       filesystemUrl,
+      basefs,
       screenContainer,
       relayUrl,
       onStatus: setStatus,
@@ -499,6 +610,8 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     const sound = new SoundSystem({
       assetsUrl: soundAssetsUrl || `${assetsPath}/sounds`,
       muted: settings.muted,
+      ambientVolume: settings.ambientVolume,
+      machineVolume: settings.machineVolume,
     });
     sound.connectTo(events);
     sound.init().then(() => {
@@ -507,6 +620,15 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
     // Small delay before transitioning
     await new Promise(r => setTimeout(r, 500));
+
+    // Terminal collapse toggle
+    const terminalPanel = container.querySelector('.bashtorio-terminal') as HTMLElement;
+    const terminalToggle = container.querySelector('.terminal-toggle') as HTMLElement;
+    const terminalToggleIcon = container.querySelector('.terminal-toggle-icon') as HTMLElement;
+    terminalToggle.addEventListener('click', () => {
+      const collapsed = terminalPanel.classList.toggle('collapsed');
+      terminalToggleIcon.textContent = collapsed ? '▶' : '▼';
+    });
 
     // Move terminal to game view and make it focusable
     gameTerminal.appendChild(screenContainer);
@@ -535,16 +657,22 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     // Create renderer
     const renderer = new Renderer({ canvas });
 
-    // Set up source input
-    sourceInput.value = state.sourceText;
-    sourceInput.addEventListener('input', () => {
-      state.sourceText = sourceInput.value;
-    });
-
     // Set up command modal
     let editingMachine: { x: number; y: number } | null = null;
     const cmdInput = commandModal.querySelector('.cmd-input') as HTMLInputElement;
     const cmdAutostart = commandModal.querySelector('.cmd-autostart') as HTMLInputElement;
+    const cmdStream = commandModal.querySelector('.cmd-stream') as HTMLInputElement;
+    const cmdInputMode = commandModal.querySelector('.cmd-input-mode') as HTMLSelectElement;
+
+    // When stream is checked, force pipe mode and disable dropdown
+    cmdStream.addEventListener('change', () => {
+      if (cmdStream.checked) {
+        cmdInputMode.value = 'pipe';
+        cmdInputMode.disabled = true;
+      } else {
+        cmdInputMode.disabled = false;
+      }
+    });
 
     function closeCommandModal() {
       if (editingMachine) {
@@ -559,9 +687,11 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     commandModal.querySelector('.cmd-save')?.addEventListener('click', () => {
       if (editingMachine) {
         const machine = state.machines.find(m => m.x === editingMachine!.x && m.y === editingMachine!.y);
-        if (machine) {
+        if (machine && machine.type === MachineType.COMMAND) {
           machine.command = cmdInput.value.trim() || 'cat';
           machine.autoStart = cmdAutostart.checked;
+          machine.stream = cmdStream.checked;
+          machine.inputMode = cmdStream.checked ? 'pipe' : cmdInputMode.value as 'pipe' | 'args';
         }
       }
       closeCommandModal();
@@ -630,7 +760,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     linefeedModal.querySelector('.lf-save')?.addEventListener('click', () => {
       if (editingLinefeed) {
         const machine = state.machines.find(m => m.x === editingLinefeed!.x && m.y === editingLinefeed!.y);
-        if (machine) {
+        if (machine && machine.type === MachineType.LINEFEED) {
           machine.emitInterval = Math.max(50, parseInt(lfInterval.value) || 500);
         }
       }
@@ -650,6 +780,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     const flipByteInputMount = flipperModal.querySelector('.flip-byte-input-mount') as HTMLElement;
     const flipByteInput = new ByteInput({ value: '\n' });
     flipByteInputMount.appendChild(flipByteInput.el);
+    const flipDirSelect = flipperModal.querySelector('.flip-dir') as HTMLSelectElement;
 
     function closeFlipperModal() {
       flipperModal.style.display = 'none';
@@ -661,8 +792,11 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     flipperModal.querySelector('.flip-save')?.addEventListener('click', () => {
       if (editingFlipper) {
         const machine = state.machines.find(m => m.x === editingFlipper!.x && m.y === editingFlipper!.y);
-        if (machine) {
+        if (machine && machine.type === MachineType.FLIPPER) {
           machine.flipperTrigger = flipByteInput.getValue();
+          const newDir = parseInt(flipDirSelect.value);
+          machine.flipperDir = newDir;
+          machine.flipperState = newDir;
         }
       }
       closeFlipperModal();
@@ -807,6 +941,59 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       }
     });
 
+    // Set up source modal
+    let editingSource: { x: number; y: number } | null = null;
+    const sourceTextInput = sourceModal.querySelector('.source-text') as HTMLTextAreaElement;
+    const sourceIntervalInput = sourceModal.querySelector('.source-interval') as HTMLInputElement;
+    const sourceNewlineWarn = sourceModal.querySelector('.source-newline-warn') as HTMLElement;
+
+    function updateSourceNewlineWarn() {
+      const text = sourceTextInput.value;
+      sourceNewlineWarn.style.display = (text.length > 0 && !text.endsWith('\n')) ? '' : 'none';
+    }
+
+    sourceTextInput.addEventListener('input', updateSourceNewlineWarn);
+
+    function closeSourceModal() {
+      sourceModal.style.display = 'none';
+      editingSource = null;
+    }
+
+    sourceModal.querySelector('.source-cancel')?.addEventListener('click', closeSourceModal);
+
+    sourceModal.querySelector('.source-save')?.addEventListener('click', () => {
+      if (editingSource) {
+        input.updateSourceConfig(
+          editingSource.x,
+          editingSource.y,
+          sourceTextInput.value,
+          Math.max(50, parseInt(sourceIntervalInput.value) || 500),
+        );
+      }
+      closeSourceModal();
+    });
+
+    sourceModal.querySelector('.source-upload')?.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.txt,.csv,.json,.md,.log,text/*';
+      fileInput.onchange = () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          sourceTextInput.value = reader.result as string;
+          updateSourceNewlineWarn();
+        };
+        reader.readAsText(file);
+      };
+      fileInput.click();
+    });
+
+    sourceModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSourceModal();
+    });
+
     // Set up network modal
     const relayInput = networkModal.querySelector('.relay-url') as HTMLInputElement;
     const networkStatus = networkModal.querySelector('.network-status') as HTMLElement;
@@ -887,7 +1074,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       outputSinks.innerHTML = '';
       sinkElements.clear();
       deserializeState(state, preset.data);
-      sourceInput.value = state.sourceText;
       renderer.handleResize(state);
 
       presetsModal.style.display = 'none';
@@ -901,6 +1087,192 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       if (e.key === 'Escape') {
         presetsModal.style.display = 'none';
       }
+    });
+
+    // Set up settings modal
+    themeSelect.value = settings.theme;
+    const root = container.querySelector('.bashtorio-root') as HTMLElement;
+    const initialTheme = getThemeById(settings.theme);
+    applyRendererTheme(initialTheme);
+    applyUITheme(root, initialTheme);
+    document.body.style.background = initialTheme.uiBg;
+
+    // Volume sliders
+    const ambientVolSlider = settingsModal.querySelector('.ambient-vol-slider') as HTMLInputElement;
+    const ambientVolValue = settingsModal.querySelector('.ambient-vol-value') as HTMLElement;
+    const machineVolSlider = settingsModal.querySelector('.machine-vol-slider') as HTMLInputElement;
+    const machineVolValue = settingsModal.querySelector('.machine-vol-value') as HTMLElement;
+
+    ambientVolSlider.value = String(settings.ambientVolume);
+    ambientVolValue.textContent = Math.round(settings.ambientVolume * 100) + '%';
+    machineVolSlider.value = String(settings.machineVolume);
+    machineVolValue.textContent = Math.round(settings.machineVolume * 100) + '%';
+
+    ambientVolSlider.addEventListener('input', () => {
+      const vol = parseFloat(ambientVolSlider.value);
+      sound.setAmbientVolume(vol);
+      ambientVolValue.textContent = Math.round(vol * 100) + '%';
+      settings.ambientVolume = vol;
+      saveSettings(settings);
+    });
+
+    machineVolSlider.addEventListener('input', () => {
+      const vol = parseFloat(machineVolSlider.value);
+      sound.setMachineVolume(vol);
+      machineVolValue.textContent = Math.round(vol * 100) + '%';
+      settings.machineVolume = vol;
+      saveSettings(settings);
+    });
+
+    settingsModal.querySelector('.settings-close')?.addEventListener('click', () => {
+      settingsModal.style.display = 'none';
+    });
+
+    settingsModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        settingsModal.style.display = 'none';
+      }
+    });
+
+    // Set up acknowledgements modal
+    settingsModal.querySelector('.ack-open-btn')?.addEventListener('click', () => {
+      acknowledgmentsModal.style.display = 'flex';
+    });
+
+    acknowledgmentsModal.querySelector('.ack-close')?.addEventListener('click', () => {
+      acknowledgmentsModal.style.display = 'none';
+    });
+
+    acknowledgmentsModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        acknowledgmentsModal.style.display = 'none';
+      }
+    });
+
+    // Close acknowledgements modal when clicking the backdrop
+    acknowledgmentsModal.addEventListener('click', (e) => {
+      if (e.target === acknowledgmentsModal) {
+        acknowledgmentsModal.style.display = 'none';
+      }
+    });
+
+    themeSelect.addEventListener('change', () => {
+      const themeId = themeSelect.value;
+      const theme = getThemeById(themeId);
+      applyRendererTheme(theme);
+      applyUITheme(root, theme);
+      document.body.style.background = theme.uiBg;
+      settings.theme = themeId;
+      saveSettings(settings);
+    });
+
+    // Command log + streams state
+    const cmdlogMap = new Map<string, HTMLElement>();
+    const streamMap = new Map<string, HTMLElement>();
+
+    function escapeHtml(s: string): string {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function truncate(s: string, max: number): string {
+      const clean = s.replace(/\n/g, ' ').trim();
+      return clean.length > max ? clean.slice(0, max) + '...' : clean;
+    }
+
+    let cmdlogAutoScroll = true;
+    const cmdlogAutoScrollBtn = container.querySelector('.cmdlog-autoscroll-btn') as HTMLElement;
+
+    function cmdlogScrollToBottom() {
+      if (cmdlogAutoScroll) {
+        cmdlogEntries.scrollTop = cmdlogEntries.scrollHeight;
+      }
+    }
+
+    cmdlogAutoScrollBtn.addEventListener('click', () => {
+      cmdlogAutoScroll = !cmdlogAutoScroll;
+      cmdlogAutoScrollBtn.classList.toggle('active', cmdlogAutoScroll);
+      cmdlogEntries.classList.toggle('scrollable', !cmdlogAutoScroll);
+      if (cmdlogAutoScroll) {
+        cmdlogEntries.scrollTop = cmdlogEntries.scrollHeight;
+      }
+    });
+
+    function clearCmdlog() {
+      cmdlogEntries.innerHTML = '';
+      cmdlogMap.clear();
+    }
+
+    function clearStreams() {
+      streamEntries.innerHTML = '';
+      streamMap.clear();
+    }
+
+    container.querySelector('.clear-cmdlog-btn')?.addEventListener('click', clearCmdlog);
+    container.querySelector('.clear-streams-btn')?.addEventListener('click', clearStreams);
+
+    // Wire command log events
+    events.on('commandStart', (payload) => {
+      const isStream = !!payload.stream;
+      const entry = document.createElement('div');
+      entry.className = isStream ? 'stream-entry stream-entry--running' : 'cmdlog-entry cmdlog-entry--running';
+      const inputClean = payload.input.replace(/\n/g, ' ').trim();
+      const cmdLine = inputClean
+        ? truncate(`$ "${inputClean}" | ${payload.command}`, 60)
+        : truncate(`$ ${payload.command}`, 60);
+
+      if (isStream) {
+        entry.innerHTML =
+          `<div class="stream-cmd"><span class="stream-cmd-text">${escapeHtml(cmdLine)}</span><span class="stream-status">running</span></div>`;
+        streamEntries.appendChild(entry);
+        streamMap.set(payload.machineId, entry);
+      } else {
+        entry.innerHTML =
+          `<div class="cmdlog-cmd"><span class="cmdlog-cmd-text">${escapeHtml(cmdLine)}</span><span class="cmdlog-status">...</span></div>`;
+        cmdlogEntries.appendChild(entry);
+        cmdlogScrollToBottom();
+        cmdlogMap.set(payload.machineId, entry);
+      }
+    });
+
+    events.on('commandComplete', (payload) => {
+      if (payload.stream) {
+        const entry = streamMap.get(payload.machineId);
+        if (!entry) return;
+        entry.classList.remove('stream-entry--running');
+        if (payload.error) entry.classList.add('stream-entry--error');
+        const statusEl = entry.querySelector('.stream-status') as HTMLElement;
+        if (statusEl) {
+          const icon = payload.error ? '✗' : '✓';
+          statusEl.textContent = payload.error ? `error ${icon}` : `done ${icon}`;
+        }
+        // Don't remove from streamMap - keep visible until cleared
+      } else {
+        const entry = cmdlogMap.get(payload.machineId);
+        if (!entry) return;
+        entry.classList.remove('cmdlog-entry--running');
+        if (payload.error) entry.classList.add('cmdlog-entry--error');
+        const statusEl = entry.querySelector('.cmdlog-status') as HTMLElement;
+        if (statusEl) {
+          const ms = Math.round(payload.durationMs);
+          const icon = payload.error ? '✗' : '✓';
+          statusEl.textContent = `${ms}ms ${icon}`;
+        }
+        // Add output line
+        const outputText = truncate(payload.output, 60);
+        if (outputText) {
+          const ioEl = document.createElement('div');
+          ioEl.className = 'cmdlog-io';
+          ioEl.textContent = '→ ' + outputText;
+          entry.appendChild(ioEl);
+        }
+        cmdlogScrollToBottom();
+        cmdlogMap.delete(payload.machineId);
+      }
+    });
+
+    events.on('simulationStart', () => {
+      clearCmdlog();
+      clearStreams();
     });
 
     // Create simulation callbacks
@@ -930,9 +1302,14 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       onSinkReceive: (char) => {
         events.emit('sinkReceive', { char });
       },
+      events,
     };
 
     // Create input handler
+    // Track cumulative rotation so the arrow always spins forward
+    let dirRotation = state.currentDir * 90;
+    let dirPrevRotation = dirRotation;
+
     const inputCallbacks: InputCallbacks = {
       onModeChange: (mode) => {
         toolbar.querySelectorAll('.mode-btn').forEach(btn => {
@@ -964,8 +1341,14 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         if (placeLabel) placeLabel.textContent = label;
       },
       onDirectionChange: (dir) => {
-        const dirBtn = toolbar.querySelector('.dir-btn');
-        if (dirBtn) dirBtn.textContent = DirArrows[dir];
+        const arrow = toolbar.querySelector('.dir-arrow') as SVGElement;
+        if (arrow) {
+          dirRotation = dir * 90;
+          // Keep cumulative so it never rewinds (e.g. 270 → 360 not 270 → 0)
+          while (dirRotation < dirPrevRotation) dirRotation += 360;
+          dirPrevRotation = dirRotation;
+          arrow.style.transform = `rotate(${dirRotation}deg)`;
+        }
       },
       onRunningChange: (running) => {
         const runBtn = toolbar.querySelector('.run-btn') as HTMLButtonElement;
@@ -985,6 +1368,9 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         editingMachine = { x: machine.x, y: machine.y };
         cmdInput.value = machine.command;
         cmdAutostart.checked = machine.autoStart;
+        cmdStream.checked = machine.stream;
+        cmdInputMode.value = machine.inputMode || 'pipe';
+        cmdInputMode.disabled = machine.stream;
         updatePromptCwd(machine.cwd);
         // Clear command runner state
         cmdRunInput.value = '';
@@ -1012,6 +1398,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       onFlipperClick: (machine) => {
         editingFlipper = { x: machine.x, y: machine.y };
         flipByteInput.setValue(machine.flipperTrigger);
+        flipDirSelect.value = String(machine.flipperDir);
         flipperModal.style.display = 'flex';
         flipByteInput.focus();
         events.emit('configureStart');
@@ -1021,7 +1408,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         // Display escape sequences for readability
         const displayText = machine.constantText.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
         constText.value = displayText;
-        constInterval.value = String(machine.constantInterval);
+        constInterval.value = String(machine.emitInterval);
         constantModal.style.display = 'flex';
         constText.focus();
         constText.select();
@@ -1048,6 +1435,15 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         delayModal.style.display = 'flex';
         delayMsInput.focus();
         delayMsInput.select();
+        events.emit('configureStart');
+      },
+      onSourceClick: (machine) => {
+        editingSource = { x: machine.x, y: machine.y };
+        sourceTextInput.value = machine.sourceText;
+        sourceIntervalInput.value = String(machine.emitInterval);
+        updateSourceNewlineWarn();
+        sourceModal.style.display = 'flex';
+        sourceTextInput.focus();
         events.emit('configureStart');
       },
       onToast: (message) => {
@@ -1095,7 +1491,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     });
 
     // Create toolbar UI
-    createToolbar(toolbar, state, input, sound, {
+    createToolbar(toolbar, state, input, sound, settings, {
       onNetworkClick: () => {
         updateNetworkUI();
         networkModal.style.display = 'flex';
@@ -1116,8 +1512,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           sinkElements.clear();
           // Load the save
           deserializeState(state, data);
-          // Update source input
-          sourceInput.value = state.sourceText;
           // Force re-render
           renderer.handleResize(state);
         } catch (e) {
@@ -1127,6 +1521,9 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       },
       onPresets: () => {
         presetsModal.style.display = 'flex';
+      },
+      onSettingsClick: () => {
+        settingsModal.style.display = 'flex';
       },
     });
 
@@ -1138,7 +1535,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     const samplePreset = PRESETS.find(p => p.id === 'sample');
     if (samplePreset) {
       deserializeState(state, samplePreset.data);
-      sourceInput.value = state.sourceText;
       renderer.handleResize(state);
     }
 
@@ -1295,6 +1691,8 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       downloadState: () => vm.downloadState(),
     };
 
+    window.addEventListener('beforeunload', () => instance.destroy());
+
     onReady?.();
     return instance;
   } catch (error) {
@@ -1310,11 +1708,13 @@ function createToolbar(
   state: GameState,
   input: InputHandler,
   sound: SoundSystem,
+  settings: Settings,
   callbacks: {
     onNetworkClick?: () => void;
     onSave?: () => void;
     onLoad?: () => void;
     onPresets?: () => void;
+    onSettingsClick?: () => void;
   } = {}
 ): void {
   const modes: { id: CursorMode; icon: string; label: string; key: string }[] = [
@@ -1395,7 +1795,7 @@ function createToolbar(
       </div>
       <div class="tool-group">
         <span class="direction-label">Dir:</span>
-        <button class="dir-btn">${DirArrows[state.currentDir]}</button>
+        <button class="dir-btn"><svg class="dir-arrow" style="transform: rotate(${state.currentDir * 90}deg)" viewBox="0 0 24 24" width="20" height="20"><path d="M4 12h13m-5-5 6 5-6 5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <span class="hint">[R]</span>
       </div>
       <div class="tool-group">
@@ -1414,15 +1814,21 @@ function createToolbar(
         <button class="action-btn clear-btn">🗑️ Clear</button>
       </div>
       <div class="tool-group">
-        <button class="action-btn save-btn">💾 Save</button>
-        <button class="action-btn load-btn">📂 Load</button>
-        <button class="action-btn presets-btn">📚 Presets</button>
+        <div class="mode-btn-wrapper">
+          <button class="action-btn storage-btn">💾 Storage</button>
+          <div class="storage-popout" style="display: none;">
+            <button class="action-btn save-btn">💾 Save</button>
+            <button class="action-btn load-btn">📂 Load</button>
+            <button class="action-btn presets-btn">📚 Presets</button>
+          </div>
+        </div>
       </div>
       <div class="tool-group">
         <button class="action-btn network-btn">🌐 Network</button>
       </div>
       <div class="tool-group">
         <button class="action-btn mute-btn" title="Toggle Sound">${sound.muted ? '🔇' : '🔊'}</button>
+        <button class="action-btn settings-btn" title="Settings">⚙️</button>
       </div>
       <div class="tool-group">
         <div class="vm-status ready">
@@ -1540,7 +1946,7 @@ function createToolbar(
     const speed = parseFloat(speedSlider.value);
     input.setSpeed(speed);
     speedValue.textContent = speed + 'x';
-    saveSettings({ muted: sound.muted, speed });
+    saveSettings({ ...settings, speed });
   });
 
   // Action buttons
@@ -1548,15 +1954,57 @@ function createToolbar(
   toolbar.querySelector('.stop-btn')?.addEventListener('click', () => input.stopSim());
   toolbar.querySelector('.clear-btn')?.addEventListener('click', () => input.clearAll());
 
+  // Storage popout
+  const storagePopout = toolbar.querySelector('.storage-popout') as HTMLElement;
+  const storageBtn = toolbar.querySelector('.storage-btn') as HTMLElement;
+
+  function showStoragePopout() {
+    storagePopout.style.left = '';
+    storagePopout.style.transform = '';
+    storagePopout.style.right = '';
+    storagePopout.style.display = 'flex';
+    // Clamp to viewport
+    const rect = storagePopout.getBoundingClientRect();
+    const btnRect = storageBtn.getBoundingClientRect();
+    const btnCenterX = btnRect.left + btnRect.width / 2;
+    if (rect.right > window.innerWidth) {
+      storagePopout.style.left = 'auto';
+      storagePopout.style.right = '0';
+      storagePopout.style.transform = 'none';
+    }
+    const popoutRect = storagePopout.getBoundingClientRect();
+    const arrowLeft = btnCenterX - popoutRect.left;
+    storagePopout.style.setProperty('--arrow-left', `${arrowLeft}px`);
+  }
+
+  storageBtn.addEventListener('click', () => {
+    if (storagePopout.style.display === 'none') {
+      showStoragePopout();
+    } else {
+      storagePopout.style.display = 'none';
+    }
+  });
+
   // Save/Load/Presets buttons
   toolbar.querySelector('.save-btn')?.addEventListener('click', () => {
+    storagePopout.style.display = 'none';
     callbacks.onSave?.();
   });
   toolbar.querySelector('.load-btn')?.addEventListener('click', () => {
+    storagePopout.style.display = 'none';
     callbacks.onLoad?.();
   });
   toolbar.querySelector('.presets-btn')?.addEventListener('click', () => {
+    storagePopout.style.display = 'none';
     callbacks.onPresets?.();
+  });
+
+  // Close storage popout on outside click
+  document.addEventListener('click', (e) => {
+    const wrapper = storageBtn.closest('.mode-btn-wrapper');
+    if (wrapper && !wrapper.contains(e.target as Node) && storagePopout.style.display !== 'none') {
+      storagePopout.style.display = 'none';
+    }
   });
 
   // Network button
@@ -1569,6 +2017,11 @@ function createToolbar(
   muteBtn?.addEventListener('click', () => {
     const muted = sound.toggleMute();
     muteBtn.textContent = muted ? '🔇' : '🔊';
-    saveSettings({ muted, speed: state.timescale });
+    saveSettings({ ...settings, muted });
+  });
+
+  // Settings button
+  toolbar.querySelector('.settings-btn')?.addEventListener('click', () => {
+    callbacks.onSettingsClick?.();
   });
 }

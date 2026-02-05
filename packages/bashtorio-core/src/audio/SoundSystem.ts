@@ -2,9 +2,11 @@
 
 import type { GameEventBus, GameEvent } from '../events/GameEventBus';
 
-export type SoundName = 'place' | 'simulationStart' | 'simulationEnd' | 'select' | 'erase' | 'configureStart' | 'simulationAmbient' | 'editingAmbient' | 'shellType' | 'shellTypeEnter' | 'sinkReceive';
+export type SoundName = 'place' | 'simulationStart' | 'simulationEnd' | 'select' | 'erase' | 'configureStart' | 'simulationAmbient' | 'editingAmbient' | 'shellType' | 'shellTypeEnter' | 'sinkReceive' | 'streamWrite';
 
-const SOUND_NAMES: SoundName[] = ['place', 'simulationStart', 'simulationEnd', 'select', 'erase', 'configureStart', 'simulationAmbient', 'editingAmbient', 'shellType', 'shellTypeEnter', 'sinkReceive'];
+const SOUND_NAMES: SoundName[] = ['place', 'simulationStart', 'simulationEnd', 'select', 'erase', 'configureStart', 'simulationAmbient', 'editingAmbient', 'shellType', 'shellTypeEnter', 'sinkReceive', 'streamWrite'];
+
+const AMBIENT_SOUNDS: ReadonlySet<SoundName> = new Set(['editingAmbient', 'simulationAmbient']);
 
 interface SoundMapping {
   sound: SoundName;
@@ -26,6 +28,7 @@ const KEYPRESS_MIN_INTERVAL = 80;
 /** Sounds with numbered file variants (e.g. shellType1.mp3 ... shellType6.mp3) */
 const SOUND_VARIANTS: Partial<Record<SoundName, number>> = {
   shellType: 6,
+  streamWrite: 3,
 };
 
 const LOOP_MAP: Partial<Record<GameEvent, ({ startLoop: SoundName } | { stopLoop: SoundName })[]>> = {
@@ -36,6 +39,8 @@ const LOOP_MAP: Partial<Record<GameEvent, ({ startLoop: SoundName } | { stopLoop
 export interface SoundSystemConfig {
   assetsUrl: string;
   muted?: boolean;
+  ambientVolume?: number;
+  machineVolume?: number;
 }
 
 type SoundEventCallback = (sound: SoundName) => void;
@@ -47,12 +52,16 @@ export class SoundSystem {
   private lastPlayTime = new Map<SoundName, number>();
   private assetsUrl: string;
   private _muted: boolean;
+  private _ambientVolume: number;
+  private _machineVolume: number;
   private listeners: SoundEventCallback[] = [];
   private unsubscribers: (() => void)[] = [];
 
   constructor(config: SoundSystemConfig) {
     this.assetsUrl = config.assetsUrl.replace(/\/$/, '');
     this._muted = config.muted ?? false;
+    this._ambientVolume = config.ambientVolume ?? 1;
+    this._machineVolume = config.machineVolume ?? 1;
   }
 
   get muted(): boolean {
@@ -103,6 +112,32 @@ export class SoundSystem {
 
     await Promise.all(loadPromises);
     console.log(`[SoundSystem] Loaded ${loadedFiles}/${totalFiles} sounds`);
+
+    // Apply initial per-category volumes
+    this.applyAmbientVolume();
+    this.applyMachineVolume();
+  }
+
+  private applyAmbientVolume(): void {
+    const v = this._ambientVolume;
+    for (const name of AMBIENT_SOUNDS) {
+      const audio = this.sounds.get(name);
+      if (audio) audio.volume = v;
+      const loop = this.loops.get(name);
+      if (loop) loop.volume = v;
+    }
+  }
+
+  private applyMachineVolume(): void {
+    const v = this._machineVolume;
+    for (const [name, audio] of this.sounds) {
+      if (!AMBIENT_SOUNDS.has(name)) audio.volume = v;
+    }
+    for (const variantList of this.variants.values()) {
+      for (const audio of variantList) {
+        audio.volume = v;
+      }
+    }
   }
 
   connectTo(events: GameEventBus): void {
@@ -149,6 +184,16 @@ export class SoundSystem {
       this.play('sinkReceive', { randomPitch: 0.15 });
     });
     this.unsubscribers.push(emitUnsub);
+
+    // streamWrite: soft blip with random pitch
+    const streamWriteUnsub = events.on('streamWrite', () => {
+      const now = performance.now();
+      const last = this.lastPlayTime.get('streamWrite') ?? 0;
+      if (now - last < KEYPRESS_MIN_INTERVAL) return;
+      this.lastPlayTime.set('streamWrite', now);
+      this.play('streamWrite', { randomPitch: 0.2 });
+    });
+    this.unsubscribers.push(streamWriteUnsub);
 
     for (const [event, mappings] of Object.entries(LOOP_MAP) as [GameEvent, ({ startLoop?: SoundName; stopLoop?: SoundName })[]][]) {
       const unsub = events.on(event, () => {
@@ -232,6 +277,16 @@ export class SoundSystem {
   toggleMute(): boolean {
     this.setMuted(!this._muted);
     return this._muted;
+  }
+
+  setAmbientVolume(volume: number): void {
+    this._ambientVolume = Math.max(0, Math.min(1, volume));
+    this.applyAmbientVolume();
+  }
+
+  setMachineVolume(volume: number): void {
+    this._machineVolume = Math.max(0, Math.min(1, volume));
+    this.applyMachineVolume();
   }
 
   setVolume(sound: SoundName, volume: number): void {

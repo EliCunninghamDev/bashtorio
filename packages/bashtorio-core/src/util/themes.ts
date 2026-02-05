@@ -1,0 +1,349 @@
+import { MachineType } from '../game/types';
+
+export interface MachineColor {
+	bg: string;
+	border: string;
+	text: string;
+}
+
+export interface ColorTheme {
+	id: string;
+	name: string;
+	// Canvas
+	canvasBg: string;
+	gridLine: string;
+	// Belts
+	beltBg: string;
+	beltEdge: string;
+	beltArrow: string;
+	// Splitter
+	splitterBg: string;
+	splitterSymbol: string;
+	// Machine indicators
+	cmdGreen: string;
+	inputAmber: string;
+	dotEmpty: string;
+	flipperArrow: string;
+	// Flash
+	flashR: number;
+	flashG: number;
+	flashB: number;
+	// Packets
+	packetBg: string;
+	packetHex: string;
+	packetControl: string;
+	packetSpace: string;
+	packetLower: string;
+	packetUpper: string;
+	packetDigit: string;
+	packetExtended: string;
+	packetPunct: string;
+	// Bubble
+	bubbleBg: string;
+	bubbleBorder: string;
+	bubbleText: string;
+	// Tooltip
+	tooltipBg: string;
+	tooltipBorder: string;
+	tooltipCmd: string;
+	tooltipInput: string;
+	tooltipOutput: string;
+	// Machine colors
+	machineColors: Record<MachineType, MachineColor>;
+	// UI chrome
+	uiBg: string;
+	uiBgSurface: string;
+	uiBgElement: string;
+	uiBgInput: string;
+	uiBgDeep: string;
+	uiBorder: string;
+	uiBorderLight: string;
+	uiFg: string;
+	uiFgSecondary: string;
+	uiFgMuted: string;
+	uiAccent: string;
+	uiAccentGreen: string;
+	uiAccentRed: string;
+}
+
+// ---------------------------------------------------------------------------
+// Color math helpers
+// ---------------------------------------------------------------------------
+
+function hexToRgb(hex: string): [number, number, number] {
+	const h = hex.replace('#', '');
+	return [
+		parseInt(h.slice(0, 2), 16),
+		parseInt(h.slice(2, 4), 16),
+		parseInt(h.slice(4, 6), 16),
+	];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+	return '#' + [r, g, b]
+		.map(c => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0'))
+		.join('');
+}
+
+function darken(hex: string, amount: number): string {
+	const [r, g, b] = hexToRgb(hex);
+	return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
+}
+
+/** Generate machine box colors: dark bg, medium border, light text */
+function mc(color: string, text = '#ccc'): MachineColor {
+	return { bg: darken(color, 0.65), border: darken(color, 0.35), text };
+}
+
+// ---------------------------------------------------------------------------
+// Palette → full theme
+// ---------------------------------------------------------------------------
+
+interface ThemePalette {
+	id: string;
+	name: string;
+	bg: string;
+	bg2: string;
+	bg3: string;
+	border: string;
+	fg: string;
+	fgDim: string;
+	accent: string;
+	red: string;
+	orange: string;
+	yellow: string;
+	green: string;
+	cyan: string;
+	blue: string;
+	purple: string;
+	pink: string;
+}
+
+function fromPalette(p: ThemePalette): ColorTheme {
+	const [fr, fg, fb] = hexToRgb(p.green);
+	return {
+		id: p.id,
+		name: p.name,
+		canvasBg: p.bg,
+		gridLine: p.bg2,
+		beltBg: p.bg3,
+		beltEdge: p.border,
+		beltArrow: p.fgDim,
+		splitterBg: darken(p.purple, 0.6),
+		splitterSymbol: p.purple,
+		cmdGreen: p.green,
+		inputAmber: p.orange,
+		dotEmpty: darken(p.fg, 0.7),
+		flipperArrow: p.cyan,
+		flashR: fr,
+		flashG: fg,
+		flashB: fb,
+		packetBg: darken(p.bg, 0.15),
+		packetHex: p.fgDim,
+		packetControl: p.orange,
+		packetSpace: darken(p.fg, 0.4),
+		packetLower: p.blue,
+		packetUpper: p.green,
+		packetDigit: p.yellow,
+		packetExtended: p.purple,
+		packetPunct: p.pink,
+		bubbleBg: p.bg3,
+		bubbleBorder: p.accent,
+		bubbleText: p.fg,
+		tooltipBg: p.bg,
+		tooltipBorder: p.fg,
+		tooltipCmd: p.green,
+		tooltipInput: p.orange,
+		tooltipOutput: p.fg,
+		machineColors: {
+			[MachineType.SOURCE]:     mc(p.green),
+			[MachineType.SINK]:       mc(p.red),
+			[MachineType.COMMAND]:    { bg: darken(p.bg, 0.3), border: p.fg, text: p.green },
+			[MachineType.DISPLAY]:    mc(p.purple),
+			[MachineType.EMOJI]:      mc(p.yellow),
+			[MachineType.NULL]:       { bg: darken(p.fg, 0.8), border: darken(p.fg, 0.6), text: darken(p.fg, 0.4) },
+			[MachineType.LINEFEED]:   mc(p.blue),
+			[MachineType.FLIPPER]:    mc(p.cyan),
+			[MachineType.DUPLICATOR]: mc(p.orange),
+			[MachineType.CONSTANT]:   mc(p.cyan),
+			[MachineType.FILTER]:     mc(p.yellow),
+			[MachineType.COUNTER]:    mc(p.blue),
+			[MachineType.DELAY]:      mc(p.red),
+			[MachineType.KEYBOARD]:   mc(p.purple),
+		},
+		uiBg: p.bg,
+		uiBgSurface: p.bg2,
+		uiBgElement: p.bg3,
+		uiBgInput: darken(p.bg, 0.3),
+		uiBgDeep: darken(p.bg, 0.5),
+		uiBorder: darken(p.border, 0.3),
+		uiBorderLight: p.border,
+		uiFg: p.fg,
+		uiFgSecondary: darken(p.fg, 0.2),
+		uiFgMuted: p.fgDim,
+		uiAccent: p.accent,
+		uiAccentGreen: darken(p.green, 0.6),
+		uiAccentRed: darken(p.red, 0.6),
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Theme definitions
+// ---------------------------------------------------------------------------
+
+const MIDNIGHT: ColorTheme = {
+	id: 'midnight',
+	name: 'Midnight',
+	canvasBg: '#12121f',
+	gridLine: '#1e1e32',
+	beltBg: '#2a2a3a',
+	beltEdge: '#3a3a4a',
+	beltArrow: '#4a4a5a',
+	splitterBg: '#3a2a4a',
+	splitterSymbol: '#8a6aaa',
+	cmdGreen: '#33ff33',
+	inputAmber: '#ffaa00',
+	dotEmpty: '#333',
+	flipperArrow: '#4a9a9a',
+	flashR: 0x33, flashG: 0xff, flashB: 0x33,
+	packetBg: '#1a1a2a',
+	packetHex: '#666',
+	packetControl: '#ff9632',
+	packetSpace: '#888888',
+	packetLower: '#64c8ff',
+	packetUpper: '#64ffc8',
+	packetDigit: '#ffff64',
+	packetExtended: '#c896ff',
+	packetPunct: '#ff96c8',
+	bubbleBg: '#2a2a4a',
+	bubbleBorder: '#6a5acd',
+	bubbleText: '#fff',
+	tooltipBg: '#0a0a0a',
+	tooltipBorder: '#cccccc',
+	tooltipCmd: '#33ff33',
+	tooltipInput: '#ffaa00',
+	tooltipOutput: '#cccccc',
+	machineColors: {
+		[MachineType.SOURCE]:     { bg: '#2a5a2a', border: '#4a8a4a', text: '#ccc' },
+		[MachineType.SINK]:       { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
+		[MachineType.COMMAND]:    { bg: '#0a0a0a', border: '#cccccc', text: '#33ff33' },
+		[MachineType.DISPLAY]:    { bg: '#5a3a6a', border: '#8a5a9a', text: '#ccc' },
+		[MachineType.EMOJI]:      { bg: '#5a5a2a', border: '#8a8a4a', text: '#ccc' },
+		[MachineType.NULL]:       { bg: '#2a2a2a', border: '#555555', text: '#888' },
+		[MachineType.LINEFEED]:   { bg: '#2a4a5a', border: '#4a8aaa', text: '#ccc' },
+		[MachineType.FLIPPER]:    { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
+		[MachineType.DUPLICATOR]: { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
+		[MachineType.CONSTANT]:   { bg: '#2a5a4a', border: '#4a9a7a', text: '#ccc' },
+		[MachineType.FILTER]:     { bg: '#3a3a2a', border: '#7a7a4a', text: '#ccc' },
+		[MachineType.COUNTER]:    { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
+		[MachineType.DELAY]:      { bg: '#4a3a3a', border: '#7a5a5a', text: '#ccc' },
+		[MachineType.KEYBOARD]:   { bg: '#4a2a5a', border: '#7a4a9a', text: '#ccc' },
+	},
+	uiBg: '#1a1a2e',
+	uiBgSurface: '#1e1e32',
+	uiBgElement: '#2a2a4a',
+	uiBgInput: '#12121f',
+	uiBgDeep: '#0a0a14',
+	uiBorder: '#333333',
+	uiBorderLight: '#3a3a5a',
+	uiFg: '#eeeeee',
+	uiFgSecondary: '#aaaaaa',
+	uiFgMuted: '#888888',
+	uiAccent: '#00d9ff',
+	uiAccentGreen: '#2a4a2a',
+	uiAccentRed: '#4a2a2a',
+};
+
+const MONOKAI = fromPalette({
+	id: 'monokai', name: 'Monokai',
+	bg: '#272822', bg2: '#3e3d32', bg3: '#49483e',
+	border: '#75715e', fg: '#f8f8f2', fgDim: '#75715e',
+	accent: '#a6e22e',
+	red: '#f92672', orange: '#fd971f', yellow: '#e6db74',
+	green: '#a6e22e', cyan: '#66d9ef', blue: '#66d9ef',
+	purple: '#ae81ff', pink: '#f92672',
+});
+
+const DRACULA = fromPalette({
+	id: 'dracula', name: 'Dracula',
+	bg: '#282a36', bg2: '#343746', bg3: '#44475a',
+	border: '#6272a4', fg: '#f8f8f2', fgDim: '#6272a4',
+	accent: '#bd93f9',
+	red: '#ff5555', orange: '#ffb86c', yellow: '#f1fa8c',
+	green: '#50fa7b', cyan: '#8be9fd', blue: '#8be9fd',
+	purple: '#bd93f9', pink: '#ff79c6',
+});
+
+const SOLARIZED_DARK = fromPalette({
+	id: 'solarized-dark', name: 'Solarized Dark',
+	bg: '#002b36', bg2: '#073642', bg3: '#094050',
+	border: '#586e75', fg: '#93a1a1', fgDim: '#586e75',
+	accent: '#268bd2',
+	red: '#dc322f', orange: '#cb4b16', yellow: '#b58900',
+	green: '#859900', cyan: '#2aa198', blue: '#268bd2',
+	purple: '#6c71c4', pink: '#d33682',
+});
+
+const ONE_DARK = fromPalette({
+	id: 'one-dark', name: 'One Dark',
+	bg: '#282c34', bg2: '#2c313c', bg3: '#3e4451',
+	border: '#4b5263', fg: '#abb2bf', fgDim: '#5c6370',
+	accent: '#61afef',
+	red: '#e06c75', orange: '#d19a66', yellow: '#e5c07b',
+	green: '#98c379', cyan: '#56b6c2', blue: '#61afef',
+	purple: '#c678dd', pink: '#e06c75',
+});
+
+const NORD = fromPalette({
+	id: 'nord', name: 'Nord',
+	bg: '#2e3440', bg2: '#3b4252', bg3: '#434c5e',
+	border: '#4c566a', fg: '#d8dee9', fgDim: '#4c566a',
+	accent: '#88c0d0',
+	red: '#bf616a', orange: '#d08770', yellow: '#ebcb8b',
+	green: '#a3be8c', cyan: '#88c0d0', blue: '#81a1c1',
+	purple: '#b48ead', pink: '#bf616a',
+});
+
+const GITHUB_DARK = fromPalette({
+	id: 'github-dark', name: 'GitHub Dark',
+	bg: '#0d1117', bg2: '#161b22', bg3: '#21262d',
+	border: '#30363d', fg: '#c9d1d9', fgDim: '#484f58',
+	accent: '#58a6ff',
+	red: '#ff7b72', orange: '#ffa657', yellow: '#d29922',
+	green: '#3fb950', cyan: '#79c0ff', blue: '#79c0ff',
+	purple: '#d2a8ff', pink: '#ff7b72',
+});
+
+/** Set CSS custom properties on a root element so the UI chrome picks up the theme */
+export function applyUITheme(root: HTMLElement, theme: ColorTheme): void {
+	const s = root.style;
+	s.setProperty('--ui-bg', theme.uiBg);
+	s.setProperty('--ui-bg-surface', theme.uiBgSurface);
+	s.setProperty('--ui-bg-element', theme.uiBgElement);
+	s.setProperty('--ui-bg-input', theme.uiBgInput);
+	s.setProperty('--ui-bg-deep', theme.uiBgDeep);
+	s.setProperty('--ui-border', theme.uiBorder);
+	s.setProperty('--ui-border-light', theme.uiBorderLight);
+	s.setProperty('--ui-fg', theme.uiFg);
+	s.setProperty('--ui-fg-secondary', theme.uiFgSecondary);
+	s.setProperty('--ui-fg-muted', theme.uiFgMuted);
+	s.setProperty('--ui-accent', theme.uiAccent);
+	s.setProperty('--ui-accent-green', theme.uiAccentGreen);
+	s.setProperty('--ui-accent-red', theme.uiAccentRed);
+}
+
+export const THEMES: ColorTheme[] = [
+	MIDNIGHT,
+	MONOKAI,
+	DRACULA,
+	SOLARIZED_DARK,
+	ONE_DARK,
+	NORD,
+	GITHUB_DARK,
+];
+
+export const DEFAULT_THEME_ID = 'midnight';
+
+export function getThemeById(id: string): ColorTheme {
+	return THEMES.find(t => t.id === id) ?? MIDNIGHT;
+}

@@ -11,14 +11,14 @@ export interface InputCallbacks {
   onDirectionChange?: (dir: Direction) => void;
   onSpeedChange?: (speed: number) => void;
   onRunningChange?: (running: boolean) => void;
-  onMachineClick?: (machine: { x: number; y: number; command: string; autoStart: boolean; cwd: string }) => void;
+  onMachineClick?: (machine: { x: number; y: number; command: string; autoStart: boolean; stream: boolean; inputMode: 'pipe' | 'args'; cwd: string }) => void;
   onLinefeedClick?: (machine: { x: number; y: number; emitInterval: number }) => void;
-  onFlipperClick?: (machine: { x: number; y: number; flipperTrigger: string }) => void;
-  onConstantClick?: (machine: { x: number; y: number; constantText: string; constantInterval: number }) => void;
+  onFlipperClick?: (machine: { x: number; y: number; flipperTrigger: string; flipperDir: number }) => void;
+  onConstantClick?: (machine: { x: number; y: number; constantText: string; emitInterval: number }) => void;
   onFilterClick?: (machine: { x: number; y: number; filterByte: string; filterMode: 'pass' | 'block' }) => void;
   onCounterClick?: (machine: { x: number; y: number; counterTrigger: string }) => void;
   onDelayClick?: (machine: { x: number; y: number; delayMs: number }) => void;
-  onSourceTextChange?: (text: string) => void;
+  onSourceClick?: (machine: { x: number; y: number; sourceText: string; emitInterval: number }) => void;
   onToast?: (message: string) => void;
 }
 
@@ -124,9 +124,12 @@ export class InputHandler {
     initGrid(this.state, this.state.gridCols, this.state.gridRows);
   }
 
-  setSourceText(text: string): void {
-    this.state.sourceText = text;
-    this.callbacks.onSourceTextChange?.(text);
+  updateSourceConfig(x: number, y: number, sourceText: string, emitInterval: number): void {
+    const machine = this.state.machines.find(m => m.x === x && m.y === y);
+    if (machine && machine.type === MachineType.SOURCE) {
+      machine.sourceText = sourceText;
+      machine.emitInterval = emitInterval;
+    }
   }
 
   handleKeyDown(e: KeyboardEvent): void {
@@ -306,6 +309,8 @@ export class InputHandler {
                 y: machine.y,
                 command: machine.command,
                 autoStart: machine.autoStart,
+                stream: machine.stream,
+                inputMode: machine.inputMode,
                 cwd: machine.cwd,
               });
             }
@@ -327,6 +332,7 @@ export class InputHandler {
                 x: machine.x,
                 y: machine.y,
                 flipperTrigger: machine.flipperTrigger,
+                flipperDir: machine.flipperDir,
               });
             }
           } else if (machine.type === MachineType.CONSTANT) {
@@ -337,7 +343,7 @@ export class InputHandler {
                 x: machine.x,
                 y: machine.y,
                 constantText: machine.constantText,
-                constantInterval: machine.constantInterval,
+                emitInterval: machine.emitInterval,
               });
             }
           } else if (machine.type === MachineType.FILTER) {
@@ -369,6 +375,17 @@ export class InputHandler {
                 x: machine.x,
                 y: machine.y,
                 delayMs: machine.delayMs,
+              });
+            }
+          } else if (machine.type === MachineType.SOURCE) {
+            if (this.state.running) {
+              this.callbacks.onToast?.('Stop the simulation to edit machines!');
+            } else {
+              this.callbacks.onSourceClick?.({
+                x: machine.x,
+                y: machine.y,
+                sourceText: machine.sourceText,
+                emitInterval: machine.emitInterval,
               });
             }
           }
@@ -403,6 +420,8 @@ export class InputHandler {
             y: machine.y,
             command: machine.command,
             autoStart: machine.autoStart,
+            stream: machine.stream,
+            inputMode: machine.inputMode,
             cwd: machine.cwd,
           });
           return;
@@ -411,12 +430,14 @@ export class InputHandler {
       // Place new command machine (only on empty cells)
       if (cell.type === CellType.EMPTY) {
         const machine = placeMachine(this.state, x, y, MachineType.COMMAND);
-        if (machine) {
+        if (machine && machine.type === MachineType.COMMAND) {
           this.callbacks.onMachineClick?.({
             x: machine.x,
             y: machine.y,
             command: machine.command,
             autoStart: machine.autoStart,
+            stream: machine.stream,
+            inputMode: machine.inputMode,
             cwd: machine.cwd,
           });
           this.events.emit('place');
@@ -435,9 +456,18 @@ export class InputHandler {
       case 'splitter':
         placeSplitter(this.state, x, y, this.state.currentDir);
         break;
-      case 'source':
-        placeMachine(this.state, x, y, MachineType.SOURCE);
+      case 'source': {
+        const sourceMachine = placeMachine(this.state, x, y, MachineType.SOURCE);
+        if (sourceMachine && sourceMachine.type === MachineType.SOURCE) {
+          this.callbacks.onSourceClick?.({
+            x: sourceMachine.x,
+            y: sourceMachine.y,
+            sourceText: sourceMachine.sourceText,
+            emitInterval: sourceMachine.emitInterval,
+          });
+        }
         break;
+      }
       case 'sink':
         placeMachine(this.state, x, y, MachineType.SINK);
         break;
@@ -453,36 +483,38 @@ export class InputHandler {
       case 'linefeed':
         placeMachine(this.state, x, y, MachineType.LINEFEED);
         break;
-      case 'flipper':
+      case 'flipper': {
         const flipperMachine = placeMachine(this.state, x, y, MachineType.FLIPPER);
-        if (flipperMachine) {
+        if (flipperMachine && flipperMachine.type === MachineType.FLIPPER) {
           flipperMachine.flipperDir = this.state.currentDir;
           flipperMachine.flipperState = this.state.currentDir;
           this.callbacks.onFlipperClick?.({
             x: flipperMachine.x,
             y: flipperMachine.y,
             flipperTrigger: flipperMachine.flipperTrigger,
+            flipperDir: flipperMachine.flipperDir,
           });
         }
         break;
+      }
       case 'duplicator':
         placeMachine(this.state, x, y, MachineType.DUPLICATOR);
         break;
       case 'constant': {
         const constantMachine = placeMachine(this.state, x, y, MachineType.CONSTANT);
-        if (constantMachine) {
+        if (constantMachine && constantMachine.type === MachineType.CONSTANT) {
           this.callbacks.onConstantClick?.({
             x: constantMachine.x,
             y: constantMachine.y,
             constantText: constantMachine.constantText,
-            constantInterval: constantMachine.constantInterval,
+            emitInterval: constantMachine.emitInterval,
           });
         }
         break;
       }
       case 'filter': {
         const filterMachine = placeMachine(this.state, x, y, MachineType.FILTER);
-        if (filterMachine) {
+        if (filterMachine && filterMachine.type === MachineType.FILTER) {
           this.callbacks.onFilterClick?.({
             x: filterMachine.x,
             y: filterMachine.y,
@@ -494,7 +526,7 @@ export class InputHandler {
       }
       case 'counter': {
         const counterMachine = placeMachine(this.state, x, y, MachineType.COUNTER);
-        if (counterMachine) {
+        if (counterMachine && counterMachine.type === MachineType.COUNTER) {
           this.callbacks.onCounterClick?.({
             x: counterMachine.x,
             y: counterMachine.y,
@@ -505,7 +537,7 @@ export class InputHandler {
       }
       case 'delay': {
         const delayMachine = placeMachine(this.state, x, y, MachineType.DELAY);
-        if (delayMachine) {
+        if (delayMachine && delayMachine.type === MachineType.DELAY) {
           this.callbacks.onDelayClick?.({
             x: delayMachine.x,
             y: delayMachine.y,
@@ -532,7 +564,7 @@ export class InputHandler {
   // Method to update machine config (called from UI after modal)
   updateMachineConfig(x: number, y: number, command: string, autoStart: boolean): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.COMMAND) {
       machine.command = command || 'cat';
       machine.autoStart = autoStart;
     }
@@ -540,29 +572,29 @@ export class InputHandler {
 
   updateLinefeedConfig(x: number, y: number, emitInterval: number): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.LINEFEED) {
       machine.emitInterval = emitInterval;
     }
   }
 
   updateFlipperConfig(x: number, y: number, flipperTrigger: string): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.FLIPPER) {
       machine.flipperTrigger = flipperTrigger || '\n';
     }
   }
 
-  updateConstantConfig(x: number, y: number, constantText: string, constantInterval: number): void {
+  updateConstantConfig(x: number, y: number, constantText: string, emitInterval: number): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.CONSTANT) {
       machine.constantText = constantText || 'hello\n';
-      machine.constantInterval = constantInterval;
+      machine.emitInterval = emitInterval;
     }
   }
 
   updateFilterConfig(x: number, y: number, filterByte: string, filterMode: 'pass' | 'block'): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.FILTER) {
       machine.filterByte = filterByte || '\n';
       machine.filterMode = filterMode;
     }
@@ -570,14 +602,14 @@ export class InputHandler {
 
   updateCounterConfig(x: number, y: number, counterTrigger: string): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.COUNTER) {
       machine.counterTrigger = counterTrigger || '\n';
     }
   }
 
   updateDelayConfig(x: number, y: number, delayMs: number): void {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
-    if (machine) {
+    if (machine && machine.type === MachineType.DELAY) {
       machine.delayMs = delayMs;
     }
   }

@@ -31,7 +31,7 @@ function placeSplitter(grid: any[][], x: number, y: number, dir: Direction) {
 }
 
 // Helper to place a machine
-function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; sinkId?: number; flipperTrigger?: string; flipperDir?: Direction; emitInterval?: number } = {}) {
+function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; async?: boolean; sinkId?: number; flipperTrigger?: string; flipperDir?: Direction; emitInterval?: number; sourceText?: string } = {}) {
   const idx = machines.length;
   const m: any = {
     x, y, type,
@@ -39,9 +39,11 @@ function placeMachine(grid: any[][], machines: any[], x: number, y: number, type
     autoStart: opts.autoStart ?? false,
     sinkId: opts.sinkId ?? 0,
   };
+  if (opts.async !== undefined) m.async = opts.async;
   if (opts.flipperTrigger !== undefined) m.flipperTrigger = opts.flipperTrigger;
   if (opts.flipperDir !== undefined) m.flipperDir = opts.flipperDir;
   if (opts.emitInterval !== undefined) m.emitInterval = opts.emitInterval;
+  if (opts.sourceText !== undefined) m.sourceText = opts.sourceText;
   machines.push(m);
   grid[x][y] = { type: CellType.MACHINE, machineIdx: idx };
 }
@@ -53,7 +55,7 @@ function createSamplePreset(): SaveData {
   const machines: any[] = [];
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n' });
 
   // Belt from source to command
   for (let x = 2; x <= 4; x++) {
@@ -79,37 +81,50 @@ function createSamplePreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'hello world\ngoodbye world\nhello again\n',
     sinkIdCounter: 2,
   };
 }
 
-// ROT13 Encoder preset
+// ROT13 Encode + Decode preset
 function createRot13Preset(): SaveData {
-  const cols = 12, rows = 8;
+  const cols = 16, rows = 9;
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
+  const rot13 = "tr 'A-Za-z' 'N-ZA-Mn-za-m'";
+
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\nROT13 twice returns the original text.\n' });
 
-  // Belt from source to command
-  for (let x = 2; x <= 4; x++) {
+  // Belt from source to encode
+  for (let x = 2; x <= 3; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
   }
 
-  // ROT13 command at (5, 3)
-  placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
-    command: "tr 'A-Za-z' 'N-ZA-Mn-za-m'",
-  });
+  // ROT13 encode at (4, 3)
+  placeMachine(grid, machines, 4, 3, MachineType.COMMAND, { command: rot13 });
 
-  // Belt from command to sink
-  for (let x = 6; x <= 8; x++) {
+  // Belt from encode to duplicator
+  placeBelt(grid, 5, 3, Direction.RIGHT);
+  placeBelt(grid, 6, 3, Direction.RIGHT);
+
+  // Duplicator at (7, 3) - sends encoded text to both paths
+  placeMachine(grid, machines, 7, 3, MachineType.DUPLICATOR);
+
+  // --- Upper path: RIGHT → Encoded sink ---
+  for (let x = 8; x <= 12; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
   }
+  placeMachine(grid, machines, 13, 3, MachineType.SINK, { sinkId: 1 });
 
-  // Sink at (9, 3)
-  placeMachine(grid, machines, 9, 3, MachineType.SINK, { sinkId: 1 });
+  // --- Lower path: DOWN → ROT13 decode → Decoded sink ---
+  placeBelt(grid, 7, 4, Direction.DOWN);
+  placeBelt(grid, 7, 5, Direction.DOWN);
+  placeMachine(grid, machines, 7, 6, MachineType.COMMAND, { command: rot13 });
+  for (let x = 8; x <= 12; x++) {
+    placeBelt(grid, x, 6, Direction.RIGHT);
+  }
+  placeMachine(grid, machines, 13, 6, MachineType.SINK, { sinkId: 2 });
 
   return {
     version: 1,
@@ -117,8 +132,7 @@ function createRot13Preset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'Hello World!\nROT13 encodes text by rotating letters 13 positions.',
-    sinkIdCounter: 2,
+    sinkIdCounter: 3,
   };
 }
 
@@ -128,7 +142,7 @@ function createUppercasePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\nthis text will be uppercase\n' });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -150,7 +164,6 @@ function createUppercasePreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'hello world\nthis text will be uppercase',
     sinkIdCounter: 2,
   };
 }
@@ -161,7 +174,7 @@ function createWordReverserPreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World\nreverse me\n' });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -183,7 +196,6 @@ function createWordReverserPreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'Hello World\nreverse me',
     sinkIdCounter: 2,
   };
 }
@@ -222,7 +234,6 @@ function createEmojiPartyPreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: '',
     sinkIdCounter: 2,
   };
 }
@@ -233,7 +244,7 @@ function createPipelinePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\npipeline demo\n' });
 
   for (let x = 2; x <= 3; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -263,7 +274,6 @@ function createPipelinePreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'hello world\npipeline demo',
     sinkIdCounter: 2,
   };
 }
@@ -274,7 +284,7 @@ function createBase64Preset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\n' });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -296,7 +306,6 @@ function createBase64Preset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'Hello World!',
     sinkIdCounter: 2,
   };
 }
@@ -307,7 +316,7 @@ function createCowsayPreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Moo!\n' });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -329,7 +338,6 @@ function createCowsayPreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'Moo!',
     sinkIdCounter: 2,
   };
 }
@@ -341,7 +349,7 @@ function createFlipperSorterPreset(): SaveData {
   const machines: any[] = [];
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'top middle bottom\ntop middle bottom\ntop middle bottom\n' });
 
   // Belt from source to sed
   placeBelt(grid, 2, 3, Direction.RIGHT);
@@ -378,7 +386,6 @@ function createFlipperSorterPreset(): SaveData {
     gridRows: rows,
     grid,
     machines,
-    sourceText: 'top middle bottom\ntop middle bottom\ntop middle bottom\n',
     sinkIdCounter: 3,
   };
 }
@@ -390,7 +397,7 @@ function createDuplicatorDemoPreset(): SaveData {
 	const machines: any[] = [];
 
 	// Source at (1, 3) - feeds alternating-case text
-	placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+	placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n' });
 
 	// Belt from source to duplicator
 	for (let x = 2; x <= 4; x++) {
@@ -438,7 +445,6 @@ function createDuplicatorDemoPreset(): SaveData {
 		gridRows: rows,
 		grid,
 		machines,
-		sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n',
 		sinkIdCounter: 3,
 	};
 }
@@ -456,7 +462,7 @@ function createMegaFactoryPreset(): SaveData {
 	placeMachine(grid, machines, 23, 0, MachineType.EMOJI);
 
 	// ═══ Main pipeline (Row 1): SOURCE → DUP → UPPERCASE → DUP → SINK ═══
-	placeMachine(grid, machines, 0, 1, MachineType.SOURCE);
+	placeMachine(grid, machines, 0, 1, MachineType.SOURCE, { sourceText: 'Hello World!\nBashtorio rocks!\nPipes are magic.\nalpha bravo charlie\ndelta echo foxtrot\nThe quick brown fox.\n' });
 	for (let x = 1; x <= 3; x++) placeBelt(grid, x, 1, Direction.RIGHT);
 	placeMachine(grid, machines, 4, 1, MachineType.DUPLICATOR);
 	for (let x = 5; x <= 7; x++) placeBelt(grid, x, 1, Direction.RIGHT);
@@ -526,8 +532,61 @@ function createMegaFactoryPreset(): SaveData {
 		gridRows: rows,
 		grid,
 		machines,
-		sourceText: 'Hello World!\nBashtorio rocks!\nPipes are magic.\nalpha bravo charlie\ndelta echo foxtrot\nThe quick brown fox.\n',
 		sinkIdCounter: 5,
+	};
+}
+
+// Even/Odd sorter - async counter streams numbers, awk filters into two sinks
+function createEvenOddPreset(): SaveData {
+	const cols = 16, rows = 9;
+	const grid = emptyGrid(cols, rows);
+	const machines: any[] = [];
+
+	// Auto-start async counter at (1, 3)
+	placeMachine(grid, machines, 1, 3, MachineType.COMMAND, {
+		command: 'i=0; while true; do echo $((i++)); sleep 0.5; done',
+		autoStart: true,
+		async: true,
+	});
+
+	// Belt from counter to duplicator
+	placeBelt(grid, 2, 3, Direction.RIGHT);
+	placeBelt(grid, 3, 3, Direction.RIGHT);
+
+	// Duplicator at (4, 3)
+	placeMachine(grid, machines, 4, 3, MachineType.DUPLICATOR);
+
+	// --- Upper path: even numbers ---
+	placeBelt(grid, 4, 2, Direction.UP);
+	placeBelt(grid, 4, 1, Direction.RIGHT);
+	placeBelt(grid, 5, 1, Direction.RIGHT);
+	placeMachine(grid, machines, 6, 1, MachineType.COMMAND, {
+		command: "awk '$1 % 2 == 0'",
+	});
+	for (let x = 7; x <= 11; x++) {
+		placeBelt(grid, x, 1, Direction.RIGHT);
+	}
+	placeMachine(grid, machines, 12, 1, MachineType.SINK, { sinkId: 1 });
+
+	// --- Lower path: odd numbers ---
+	placeBelt(grid, 4, 4, Direction.DOWN);
+	placeBelt(grid, 4, 5, Direction.RIGHT);
+	placeBelt(grid, 5, 5, Direction.RIGHT);
+	placeMachine(grid, machines, 6, 5, MachineType.COMMAND, {
+		command: "awk '$1 % 2 != 0'",
+	});
+	for (let x = 7; x <= 11; x++) {
+		placeBelt(grid, x, 5, Direction.RIGHT);
+	}
+	placeMachine(grid, machines, 12, 5, MachineType.SINK, { sinkId: 2 });
+
+	return {
+		version: 1,
+		gridCols: cols,
+		gridRows: rows,
+		grid,
+		machines,
+		sinkIdCounter: 3,
 	};
 }
 
@@ -541,8 +600,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'rot13',
-    name: 'ROT13 Encoder',
-    description: 'Classic cipher that rotates letters by 13 positions',
+    name: 'ROT13 Encode/Decode',
+    description: 'Encodes text with ROT13, then duplicates it - one path to a sink, the other decoded back to prove the round-trip',
     data: createRot13Preset(),
   },
   {
@@ -592,6 +651,12 @@ export const PRESETS: Preset[] = [
     name: 'Duplicator Demo',
     description: 'Duplicator splits alternating-case text into uppercase and lowercase paths',
     data: createDuplicatorDemoPreset(),
+  },
+  {
+    id: 'even-odd',
+    name: 'Even/Odd Sorter',
+    description: 'Async counter streams numbers forever - duplicator feeds two awk filters that split into even and odd sinks',
+    data: createEvenOddPreset(),
   },
   {
     id: 'mega-factory',
