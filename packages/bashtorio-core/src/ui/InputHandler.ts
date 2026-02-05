@@ -14,6 +14,10 @@ export interface InputCallbacks {
   onMachineClick?: (machine: { x: number; y: number; command: string; autoStart: boolean; cwd: string }) => void;
   onLinefeedClick?: (machine: { x: number; y: number; emitInterval: number }) => void;
   onFlipperClick?: (machine: { x: number; y: number; flipperTrigger: string }) => void;
+  onConstantClick?: (machine: { x: number; y: number; constantText: string; constantInterval: number }) => void;
+  onFilterClick?: (machine: { x: number; y: number; filterByte: string; filterMode: 'pass' | 'block' }) => void;
+  onCounterClick?: (machine: { x: number; y: number; counterTrigger: string }) => void;
+  onDelayClick?: (machine: { x: number; y: number; delayMs: number }) => void;
   onSourceTextChange?: (text: string) => void;
   onToast?: (message: string) => void;
 }
@@ -27,6 +31,11 @@ export class InputHandler {
   private rightMouseDown = false;
   private rightDragCellType: CellType | null = null;
   private rightDragMachineType: MachineType | null = null;
+  private panning = false;
+  private panStartScreenX = 0;
+  private panStartScreenY = 0;
+  private panStartCamX = 0;
+  private panStartCamY = 0;
 
   constructor(state: GameState, renderer: Renderer, canvas: HTMLCanvasElement, events: GameEventBus, callbacks: InputCallbacks = {}) {
     this.state = state;
@@ -40,8 +49,16 @@ export class InputHandler {
     // Canvas mouse events
     this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
     this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
-    this.canvas.addEventListener('mouseup', () => { this.state.mouseDown = false; this.rightMouseDown = false; });
-    this.canvas.addEventListener('mouseleave', () => { this.state.mouseDown = false; this.rightMouseDown = false; });
+    this.canvas.addEventListener('mouseup', () => {
+      this.state.mouseDown = false;
+      this.rightMouseDown = false;
+      this.stopPan();
+    });
+    this.canvas.addEventListener('mouseleave', () => {
+      this.state.mouseDown = false;
+      this.rightMouseDown = false;
+      this.stopPan();
+    });
     this.canvas.addEventListener('contextmenu', e => e.preventDefault());
 
     // Note: Keyboard events are handled externally via handleKeyDown() to coordinate with v86 blocking
@@ -103,6 +120,7 @@ export class InputHandler {
 
     this.state.machines = [];
     this.state.packets = [];
+    this.state.orphanedPackets = [];
     initGrid(this.state, this.state.gridCols, this.state.gridRows);
   }
 
@@ -165,6 +183,30 @@ export class InputHandler {
       case 'V':
         if (this.state.currentMode === 'machine') this.selectPlaceable('flipper');
         break;
+      case 'd':
+      case 'D':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('duplicator');
+        break;
+      case 't':
+      case 'T':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('constant');
+        break;
+      case 'g':
+      case 'G':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('filter');
+        break;
+      case 'n':
+      case 'N':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('counter');
+        break;
+      case 'b':
+      case 'B':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('delay');
+        break;
+      case 'k':
+      case 'K':
+        if (this.state.currentMode === 'machine') this.selectPlaceable('keyboard');
+        break;
 
       case 'r':
       case 'R':
@@ -178,6 +220,17 @@ export class InputHandler {
   }
 
   private handleMouseDown(e: MouseEvent): void {
+    // Ctrl+left-click: start panning
+    if (e.button === 0 && e.ctrlKey) {
+      this.panning = true;
+      this.panStartScreenX = e.clientX;
+      this.panStartScreenY = e.clientY;
+      this.panStartCamX = this.state.camera.x;
+      this.panStartCamY = this.state.camera.y;
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
     const pos = this.renderer.getGridPosition(e.clientX, e.clientY);
     if (!pos) return;
 
@@ -199,6 +252,16 @@ export class InputHandler {
   }
 
   private handleMouseMove(e: MouseEvent): void {
+    // Panning: update camera from screen-space delta
+    if (this.panning) {
+      const cam = this.state.camera;
+      const dx = e.clientX - this.panStartScreenX;
+      const dy = e.clientY - this.panStartScreenY;
+      cam.x = this.panStartCamX - dx / cam.scale;
+      cam.y = this.panStartCamY - dy / cam.scale;
+      return;
+    }
+
     const pos = this.renderer.getGridPosition(e.clientX, e.clientY);
     if (!pos) return;
 
@@ -264,6 +327,48 @@ export class InputHandler {
                 x: machine.x,
                 y: machine.y,
                 flipperTrigger: machine.flipperTrigger,
+              });
+            }
+          } else if (machine.type === MachineType.CONSTANT) {
+            if (this.state.running) {
+              this.callbacks.onToast?.('Stop the simulation to edit machines!');
+            } else {
+              this.callbacks.onConstantClick?.({
+                x: machine.x,
+                y: machine.y,
+                constantText: machine.constantText,
+                constantInterval: machine.constantInterval,
+              });
+            }
+          } else if (machine.type === MachineType.FILTER) {
+            if (this.state.running) {
+              this.callbacks.onToast?.('Stop the simulation to edit machines!');
+            } else {
+              this.callbacks.onFilterClick?.({
+                x: machine.x,
+                y: machine.y,
+                filterByte: machine.filterByte,
+                filterMode: machine.filterMode,
+              });
+            }
+          } else if (machine.type === MachineType.COUNTER) {
+            if (this.state.running) {
+              this.callbacks.onToast?.('Stop the simulation to edit machines!');
+            } else {
+              this.callbacks.onCounterClick?.({
+                x: machine.x,
+                y: machine.y,
+                counterTrigger: machine.counterTrigger,
+              });
+            }
+          } else if (machine.type === MachineType.DELAY) {
+            if (this.state.running) {
+              this.callbacks.onToast?.('Stop the simulation to edit machines!');
+            } else {
+              this.callbacks.onDelayClick?.({
+                x: machine.x,
+                y: machine.y,
+                delayMs: machine.delayMs,
               });
             }
           }
@@ -360,9 +465,68 @@ export class InputHandler {
           });
         }
         break;
+      case 'duplicator':
+        placeMachine(this.state, x, y, MachineType.DUPLICATOR);
+        break;
+      case 'constant': {
+        const constantMachine = placeMachine(this.state, x, y, MachineType.CONSTANT);
+        if (constantMachine) {
+          this.callbacks.onConstantClick?.({
+            x: constantMachine.x,
+            y: constantMachine.y,
+            constantText: constantMachine.constantText,
+            constantInterval: constantMachine.constantInterval,
+          });
+        }
+        break;
+      }
+      case 'filter': {
+        const filterMachine = placeMachine(this.state, x, y, MachineType.FILTER);
+        if (filterMachine) {
+          this.callbacks.onFilterClick?.({
+            x: filterMachine.x,
+            y: filterMachine.y,
+            filterByte: filterMachine.filterByte,
+            filterMode: filterMachine.filterMode,
+          });
+        }
+        break;
+      }
+      case 'counter': {
+        const counterMachine = placeMachine(this.state, x, y, MachineType.COUNTER);
+        if (counterMachine) {
+          this.callbacks.onCounterClick?.({
+            x: counterMachine.x,
+            y: counterMachine.y,
+            counterTrigger: counterMachine.counterTrigger,
+          });
+        }
+        break;
+      }
+      case 'delay': {
+        const delayMachine = placeMachine(this.state, x, y, MachineType.DELAY);
+        if (delayMachine) {
+          this.callbacks.onDelayClick?.({
+            x: delayMachine.x,
+            y: delayMachine.y,
+            delayMs: delayMachine.delayMs,
+          });
+        }
+        break;
+      }
+      case 'keyboard':
+        placeMachine(this.state, x, y, MachineType.KEYBOARD);
+        break;
     }
 
     this.events.emit('place');
+  }
+
+  private stopPan(): void {
+    if (this.panning) {
+      this.panning = false;
+      this.renderer.updateCursor(this.state.currentMode);
+    }
   }
 
   // Method to update machine config (called from UI after modal)
@@ -385,6 +549,36 @@ export class InputHandler {
     const machine = this.state.machines.find(m => m.x === x && m.y === y);
     if (machine) {
       machine.flipperTrigger = flipperTrigger || '\n';
+    }
+  }
+
+  updateConstantConfig(x: number, y: number, constantText: string, constantInterval: number): void {
+    const machine = this.state.machines.find(m => m.x === x && m.y === y);
+    if (machine) {
+      machine.constantText = constantText || 'hello\n';
+      machine.constantInterval = constantInterval;
+    }
+  }
+
+  updateFilterConfig(x: number, y: number, filterByte: string, filterMode: 'pass' | 'block'): void {
+    const machine = this.state.machines.find(m => m.x === x && m.y === y);
+    if (machine) {
+      machine.filterByte = filterByte || '\n';
+      machine.filterMode = filterMode;
+    }
+  }
+
+  updateCounterConfig(x: number, y: number, counterTrigger: string): void {
+    const machine = this.state.machines.find(m => m.x === x && m.y === y);
+    if (machine) {
+      machine.counterTrigger = counterTrigger || '\n';
+    }
+  }
+
+  updateDelayConfig(x: number, y: number, delayMs: number): void {
+    const machine = this.state.machines.find(m => m.x === x && m.y === y);
+    if (machine) {
+      machine.delayMs = delayMs;
     }
   }
 }

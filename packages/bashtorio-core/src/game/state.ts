@@ -1,4 +1,4 @@
-import type { Cell, Machine, Packet, CursorMode, PlaceableType, Direction } from './types';
+import type { Cell, Machine, Packet, OrphanedPacket, CursorMode, PlaceableType, Direction, Camera } from './types';
 import type { LinuxVM } from '../vm';
 
 export interface GameState {
@@ -7,6 +7,7 @@ export interface GameState {
   gridRows: number;
   machines: Machine[];
   packets: Packet[];
+  orphanedPackets: OrphanedPacket[];
   packetId: number;
   sinkIdCounter: number;
 
@@ -24,6 +25,8 @@ export interface GameState {
   lastEmitTime: number;
   emitDelay: number;
 
+  camera: Camera;
+
   vm: LinuxVM | null;
 }
 
@@ -34,6 +37,7 @@ export function createInitialState(): GameState {
     gridRows: 0,
     machines: [],
     packets: [],
+    orphanedPackets: [],
     packetId: 0,
     sinkIdCounter: 1,
 
@@ -50,6 +54,8 @@ export function createInitialState(): GameState {
     sourcePos: 0,
     lastEmitTime: 0,
     emitDelay: 150,
+
+    camera: { x: 0, y: 0, scale: 1 },
 
     vm: null,
   };

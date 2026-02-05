@@ -43,6 +43,7 @@ export function startSimulation(state: GameState): void {
   state.sourcePos = 0;
   state.lastEmitTime = performance.now();
   state.packets = [];
+  state.orphanedPackets = [];
 
   // Reset machines
   for (const machine of state.machines) {
@@ -56,14 +57,15 @@ export function startSimulation(state: GameState): void {
     machine.autoStartRan = false;
     machine.sourcePos = 0;
     machine.flipperState = machine.flipperDir;
+    machine.constantPos = 0;
+    machine.counterCount = 0;
+    machine.delayQueue = [];
   }
 }
 
 export function stopSimulation(state: GameState): void {
   state.running = false;
-
-  // Clean up all shell sessions - VM handles this internally
-  // We don't need to access the private shells map
+  state.orphanedPackets = [];
 }
 
 export function findMachineOutput(
@@ -167,6 +169,10 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, c
     callbacks.onMachineReceive?.(content);
   }
   // NULL machines silently discard packets
+  // DUPLICATOR machines buffer input for replication to all outputs
+  else if (machine.type === MachineType.DUPLICATOR) {
+    machine.outputBuffer += content;
+  }
   // FLIPPER machines buffer input and rotate clockwise on trigger byte
   else if (machine.type === MachineType.FLIPPER) {
     if (content === machine.flipperTrigger) {
@@ -185,6 +191,64 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, c
     }
     machine.outputBuffer += content;
   }
+  // FILTER: pass or block a specific byte
+  else if (machine.type === MachineType.FILTER) {
+    const match = content === machine.filterByte;
+    if ((machine.filterMode === 'pass' && match) || (machine.filterMode === 'block' && !match)) {
+      machine.outputBuffer += content;
+    }
+  }
+  // COUNTER: increment count, emit digits on trigger
+  else if (machine.type === MachineType.COUNTER) {
+    machine.counterCount++;
+    if (content === machine.counterTrigger) {
+      machine.outputBuffer += String(machine.counterCount);
+      machine.counterCount = 0;
+    }
+  }
+  // DELAY: push to delay queue
+  else if (machine.type === MachineType.DELAY) {
+    machine.delayQueue.push({ char: content, time: performance.now() });
+  }
+  // KEYBOARD: output-only, no-op on receive
+}
+
+const ORPHAN_GRAVITY = 0.15;
+const ORPHAN_MAX_AGE = 10000;
+const ORPHAN_TOSS = PACKET_SPEED * 1.5;
+
+function orphanPacket(state: GameState, packet: Packet, cellX: number, cellY: number): void {
+	const worldX = cellX * GRID_SIZE + packet.offsetX;
+	const worldY = cellY * GRID_SIZE + packet.offsetY;
+	const delta = DirDelta[packet.dir];
+
+	state.orphanedPackets.push({
+		id: state.packetId++,
+		worldX,
+		worldY,
+		vx: delta.dx * ORPHAN_TOSS,
+		vy: delta.dy * ORPHAN_TOSS,
+		content: packet.content,
+		age: 0,
+	});
+}
+
+function updateOrphanedPackets(state: GameState, deltaTime: number): void {
+	const timeScale = state.timescale * (deltaTime / 16);
+	const maxY = state.gridRows * GRID_SIZE + 500;
+
+	for (let i = state.orphanedPackets.length - 1; i >= 0; i--) {
+		const op = state.orphanedPackets[i];
+
+		op.vy += ORPHAN_GRAVITY * timeScale;
+		op.worldX += op.vx * timeScale;
+		op.worldY += op.vy * timeScale;
+		op.age += deltaTime;
+
+		if (op.worldY > maxY || op.age > ORPHAN_MAX_AGE) {
+			state.orphanedPackets.splice(i, 1);
+		}
+	}
 }
 
 function updatePacket(
@@ -235,8 +299,9 @@ function updatePacket(
 
   const nextCell = getCell(state, nextX, nextY);
 
-  // Fell off the grid or into empty space
+  // Fell off the grid or into empty space - orphan the packet
   if (!nextCell || nextCell.type === CellType.EMPTY) {
+    orphanPacket(state, packet, nextX, nextY);
     return false;
   }
 
@@ -371,6 +436,21 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       machine.lastEmitTime = now;
       return true;
     }
+  } else if (machine.type === MachineType.DUPLICATOR) {
+    if (machine.outputBuffer.length > 0) {
+      const outputs = findFlipperOutputs(state, machine);
+      if (outputs.length === 0) return false;
+      // Only emit when ALL output cells are clear
+      for (const o of outputs) {
+        if (!isCellEmpty(state, o.x, o.y)) return false;
+      }
+      const char = machine.outputBuffer[0];
+      machine.outputBuffer = machine.outputBuffer.slice(1);
+      for (const o of outputs) {
+        createPacket(state, o.x, o.y, char, o.dir);
+      }
+      return true;
+    }
   } else if (machine.type === MachineType.FLIPPER) {
     if (machine.outputBuffer.length > 0) {
       const dir = machine.flipperState as Direction;
@@ -383,6 +463,24 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       const char = machine.outputBuffer[0];
       machine.outputBuffer = machine.outputBuffer.slice(1);
       createPacket(state, nx, ny, char, dir);
+      return true;
+    }
+  } else if (machine.type === MachineType.CONSTANT) {
+    if (machine.constantText.length === 0) return false;
+    const now = performance.now();
+    const adjustedDelay = machine.constantInterval / state.timescale;
+    if (now - machine.lastEmitTime > adjustedDelay) {
+      const char = machine.constantText[machine.constantPos];
+      createPacket(state, output.x, output.y, char, output.dir);
+      machine.constantPos = (machine.constantPos + 1) % machine.constantText.length;
+      machine.lastEmitTime = now;
+      return true;
+    }
+  } else if (machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD) {
+    if (machine.outputBuffer.length > 0) {
+      const char = machine.outputBuffer[0];
+      machine.outputBuffer = machine.outputBuffer.slice(1);
+      createPacket(state, output.x, output.y, char, output.dir);
       return true;
     }
   }
@@ -403,7 +501,7 @@ export function updateSimulation(
   const adjustedDelay = state.emitDelay / state.timescale;
   if (now - state.lastEmitTime > adjustedDelay) {
     for (const machine of state.machines) {
-      if (machine.type === MachineType.SOURCE || machine.type === MachineType.COMMAND || machine.type === MachineType.FLIPPER) {
+      if (machine.type === MachineType.SOURCE || machine.type === MachineType.COMMAND || machine.type === MachineType.FLIPPER || machine.type === MachineType.DUPLICATOR || machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD) {
         if (emitFromMachine(state, machine)) {
           state.lastEmitTime = now;
         }
@@ -411,10 +509,19 @@ export function updateSimulation(
     }
   }
 
-  // Emoji and linefeed machines emit on their own timer
+  // Emoji, linefeed, and constant machines emit on their own timer
   for (const machine of state.machines) {
-    if (machine.type === MachineType.EMOJI || machine.type === MachineType.LINEFEED) {
+    if (machine.type === MachineType.EMOJI || machine.type === MachineType.LINEFEED || machine.type === MachineType.CONSTANT) {
       emitFromMachine(state, machine);
+    }
+  }
+
+  // Process delay queues: move ready items to outputBuffer
+  for (const machine of state.machines) {
+    if (machine.type === MachineType.DELAY && machine.delayQueue.length > 0) {
+      while (machine.delayQueue.length > 0 && now - machine.delayQueue[0].time >= machine.delayMs) {
+        machine.outputBuffer += machine.delayQueue.shift()!.char;
+      }
     }
   }
 
@@ -444,4 +551,7 @@ export function updateSimulation(
       state.packets.splice(i, 1);
     }
   }
+
+  // Update orphaned packets (gravity physics)
+  updateOrphanedPackets(state, deltaTime);
 }

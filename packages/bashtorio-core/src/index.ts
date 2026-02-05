@@ -7,6 +7,8 @@ export { Renderer } from './render';
 export type { RendererConfig } from './render';
 export { InputHandler } from './ui';
 export type { InputCallbacks } from './ui';
+export { ByteInput } from './ui/components/ByteInput';
+export type { ByteInputOptions } from './ui/components/ByteInput';
 export { SoundSystem } from './audio/SoundSystem';
 export type { SoundName, SoundSystemConfig } from './audio/SoundSystem';
 export { GameEventBus } from './events/GameEventBus';
@@ -28,10 +30,11 @@ export { PRESETS, type Preset } from './util/presets';
 import { LinuxVM } from './vm';
 import { Renderer } from './render';
 import { InputHandler, type InputCallbacks } from './ui';
+import { ByteInput } from './ui/components/ByteInput';
 import { createInitialState, type GameState } from './game/state';
 import { initGrid } from './game/grid';
 import { updateSimulation, type SimulationCallbacks } from './game/simulation';
-import { GRID_SIZE, DirArrows, type CursorMode, type PlaceableType } from './game/types';
+import { GRID_COLS, GRID_ROWS, DirArrows, MachineType, type CursorMode, type PlaceableType } from './game/types';
 import { ansiToHtml } from './util/ansi';
 import { downloadSave, uploadSave, deserializeState } from './util/saveload';
 import { PRESETS } from './util/presets';
@@ -113,6 +116,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       </div>
       <div class="bashtorio-game" style="display: none;">
         <canvas class="game-canvas"></canvas>
+        <div class="sidebar-resize-handle"></div>
         <div class="bashtorio-toolbar"></div>
         <div class="bashtorio-sidebar">
           <div class="bashtorio-output">
@@ -139,38 +143,82 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
       <!-- Machine Picker Popup -->
       <div class="machine-picker" style="display: none;">
-        <button class="picker-item" data-placeable="belt" title="Belt (Q)">
-          <span class="picker-icon">➡️</span>
-          <span class="picker-label">Belt</span>
-        </button>
-        <button class="picker-item" data-placeable="splitter" title="Splitter (W)">
-          <span class="picker-icon">⑂</span>
-          <span class="picker-label">Split</span>
-        </button>
-        <button class="picker-item" data-placeable="source" title="Source (E)">
-          <span class="picker-icon">📤</span>
-          <span class="picker-label">SRC</span>
-        </button>
-        <button class="picker-item" data-placeable="command" title="Shell (F)">
-          <span class="picker-icon">🖥️</span>
-          <span class="picker-label">Shell</span>
-        </button>
-        <button class="picker-item" data-placeable="sink" title="Sink (S)">
-          <span class="picker-icon">📥</span>
-          <span class="picker-label">Sink</span>
-        </button>
-        <button class="picker-item" data-placeable="display" title="Display (A)">
-          <span class="picker-icon">💬</span>
-          <span class="picker-label">UTF8</span>
-        </button>
-        <button class="picker-item" data-placeable="emoji" title="Emoji (Z)">
-          <span class="picker-icon">🎲</span>
-          <span class="picker-label">Emoji</span>
-        </button>
-        <button class="picker-item" data-placeable="flipper" title="Flipper (V)">
-          <span class="picker-icon">🔀</span>
-          <span class="picker-label">Flip</span>
-        </button>
+        <div class="picker-column">
+          <span class="picker-column-label">Route</span>
+          <button class="picker-item" data-placeable="belt" title="Belt (Q)">
+            <span class="picker-icon">➡️</span>
+            <span class="picker-label">Belt</span>
+          </button>
+          <button class="picker-item" data-placeable="splitter" title="Splitter (W)">
+            <span class="picker-icon">⑂</span>
+            <span class="picker-label">Split</span>
+          </button>
+          <button class="picker-item" data-placeable="flipper" title="Flipper (V)">
+            <span class="picker-icon">🔀</span>
+            <span class="picker-label">Flip</span>
+          </button>
+          <button class="picker-item" data-placeable="duplicator" title="Duplicator (D)">
+            <span class="picker-icon">📋</span>
+            <span class="picker-label">Dup</span>
+          </button>
+        </div>
+        <div class="picker-column">
+          <span class="picker-column-label">Source</span>
+          <button class="picker-item" data-placeable="source" title="Source (E)">
+            <span class="picker-icon">📤</span>
+            <span class="picker-label">SRC</span>
+          </button>
+          <button class="picker-item" data-placeable="constant" title="Constant (T)">
+            <span class="picker-icon">♻️</span>
+            <span class="picker-label">Loop</span>
+          </button>
+          <button class="picker-item" data-placeable="keyboard" title="Keyboard (K)">
+            <span class="picker-icon">⌨️</span>
+            <span class="picker-label">Key</span>
+          </button>
+          <button class="picker-item" data-placeable="linefeed" title="Linefeed (C)">
+            <span class="picker-icon">↵</span>
+            <span class="picker-label">LF</span>
+          </button>
+          <button class="picker-item" data-placeable="emoji" title="Emoji (Z)">
+            <span class="picker-icon">🎲</span>
+            <span class="picker-label">Emoji</span>
+          </button>
+        </div>
+        <div class="picker-column">
+          <span class="picker-column-label">Process</span>
+          <button class="picker-item" data-placeable="command" title="Shell (F)">
+            <span class="picker-icon">🖥️</span>
+            <span class="picker-label">Shell</span>
+          </button>
+          <button class="picker-item" data-placeable="filter" title="Filter (G)">
+            <span class="picker-icon">🚦</span>
+            <span class="picker-label">Filter</span>
+          </button>
+          <button class="picker-item" data-placeable="counter" title="Counter (N)">
+            <span class="picker-icon">🔢</span>
+            <span class="picker-label">Count</span>
+          </button>
+          <button class="picker-item" data-placeable="delay" title="Delay (B)">
+            <span class="picker-icon">⏱️</span>
+            <span class="picker-label">Delay</span>
+          </button>
+        </div>
+        <div class="picker-column">
+          <span class="picker-column-label">Output</span>
+          <button class="picker-item" data-placeable="sink" title="Sink (S)">
+            <span class="picker-icon">📥</span>
+            <span class="picker-label">Sink</span>
+          </button>
+          <button class="picker-item" data-placeable="display" title="Display (A)">
+            <span class="picker-icon">💬</span>
+            <span class="picker-label">UTF8</span>
+          </button>
+          <button class="picker-item" data-placeable="null" title="Null (X)">
+            <span class="picker-icon">🕳️</span>
+            <span class="picker-label">Null</span>
+          </button>
+        </div>
       </div>
 
       <!-- Command Modal -->
@@ -231,22 +279,79 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         <div class="modal-content">
           <h3>Flipper</h3>
           <p class="modal-description">Set the trigger byte that flips the output direction.</p>
-          <div class="form-group">
-            <label>Trigger:</label>
-            <select class="flip-trigger-select">
-              <option value="\n">Newline (\\n)</option>
-              <option value=" ">Space</option>
-              <option value="\t">Tab (\\t)</option>
-              <option value=",">Comma (,)</option>
-              <option value=";">Semicolon (;)</option>
-              <option value="|">Pipe (|)</option>
-              <option value="custom">Custom...</option>
-            </select>
-            <input type="text" class="flip-trigger-custom" maxlength="1" placeholder="char" style="display: none; width: 60px; margin-left: 8px;">
-          </div>
+          <div class="form-group flip-byte-input-mount"></div>
           <div class="modal-buttons">
             <button class="flip-cancel">Cancel</button>
             <button class="flip-save primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Constant Modal -->
+      <div class="bashtorio-modal constant-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Constant</h3>
+          <p class="modal-description">Loops text forever at a set interval.</p>
+          <div class="form-group">
+            <label>Text:</label>
+            <input type="text" class="const-text" value="hello\n">
+          </div>
+          <div class="form-group">
+            <label>Interval (ms):</label>
+            <input type="number" class="const-interval" min="50" max="10000" step="50" value="500">
+          </div>
+          <div class="modal-buttons">
+            <button class="const-cancel">Cancel</button>
+            <button class="const-save primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter Modal -->
+      <div class="bashtorio-modal filter-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Filter</h3>
+          <p class="modal-description">Pass or block a specific byte.</p>
+          <div class="form-group filter-byte-input-mount"></div>
+          <div class="form-group">
+            <label>Mode:</label>
+            <select class="filter-mode-select">
+              <option value="pass">Pass (only matching)</option>
+              <option value="block">Block (everything except)</option>
+            </select>
+          </div>
+          <div class="modal-buttons">
+            <button class="filter-cancel">Cancel</button>
+            <button class="filter-save primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Counter Modal -->
+      <div class="bashtorio-modal counter-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Counter</h3>
+          <p class="modal-description">Counts received bytes. Emits count and resets on trigger byte.</p>
+          <div class="form-group counter-byte-input-mount"></div>
+          <div class="modal-buttons">
+            <button class="counter-cancel">Cancel</button>
+            <button class="counter-save primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delay Modal -->
+      <div class="bashtorio-modal delay-modal" style="display: none;">
+        <div class="modal-content">
+          <h3>Delay</h3>
+          <p class="modal-description">Holds packets for a set duration before re-emitting.</p>
+          <div class="form-group">
+            <label>Delay (ms):</label>
+            <input type="number" class="delay-ms" min="50" max="30000" step="50" value="1000">
+          </div>
+          <div class="modal-buttons">
+            <button class="delay-cancel">Cancel</button>
+            <button class="delay-save primary">Save</button>
           </div>
         </div>
       </div>
@@ -299,13 +404,16 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   const gameScreen = container.querySelector('.bashtorio-game') as HTMLElement;
   const canvas = container.querySelector('.game-canvas') as HTMLCanvasElement;
   const toolbar = container.querySelector('.bashtorio-toolbar') as HTMLElement;
-  const sidebar = container.querySelector('.bashtorio-sidebar') as HTMLElement;
   const outputSinks = container.querySelector('.output-sinks') as HTMLElement;
   const sourceInput = container.querySelector('.source-input') as HTMLTextAreaElement;
   const gameTerminal = container.querySelector('.game-terminal') as HTMLElement;
   const commandModal = container.querySelector('.command-modal') as HTMLElement;
   const linefeedModal = container.querySelector('.linefeed-modal') as HTMLElement;
   const flipperModal = container.querySelector('.flipper-modal') as HTMLElement;
+  const constantModal = container.querySelector('.constant-modal') as HTMLElement;
+  const filterModal = container.querySelector('.filter-modal') as HTMLElement;
+  const counterModal = container.querySelector('.counter-modal') as HTMLElement;
+  const delayModal = container.querySelector('.delay-modal') as HTMLElement;
   const networkModal = container.querySelector('.network-modal') as HTMLElement;
   const presetsModal = container.querySelector('.presets-modal') as HTMLElement;
   const toast = container.querySelector('.bashtorio-toast') as HTMLElement;
@@ -424,12 +532,8 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     bootScreen.style.display = 'none';
     gameScreen.style.display = 'grid';
 
-    // Create renderer (but don't resize yet - toolbar not populated)
-    const renderer = new Renderer({
-      canvas,
-      toolbar,
-      outputPanel: sidebar,
-    });
+    // Create renderer
+    const renderer = new Renderer({ canvas });
 
     // Set up source input
     sourceInput.value = state.sourceText;
@@ -541,36 +645,16 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       }
     });
 
-    // Set up flipper modal
+    // Set up flipper modal with ByteInput
     let editingFlipper: { x: number; y: number } | null = null;
-    const flipTriggerSelect = flipperModal.querySelector('.flip-trigger-select') as HTMLSelectElement;
-    const flipTriggerCustom = flipperModal.querySelector('.flip-trigger-custom') as HTMLInputElement;
+    const flipByteInputMount = flipperModal.querySelector('.flip-byte-input-mount') as HTMLElement;
+    const flipByteInput = new ByteInput({ value: '\n' });
+    flipByteInputMount.appendChild(flipByteInput.el);
 
     function closeFlipperModal() {
       flipperModal.style.display = 'none';
       editingFlipper = null;
     }
-
-    function triggerToSelectValue(trigger: string): string {
-      if (trigger === '\n') return '\\n';
-      if (trigger === ' ') return ' ';
-      if (trigger === '\t') return '\\t';
-      if (trigger === ',') return ',';
-      if (trigger === ';') return ';';
-      if (trigger === '|') return '|';
-      return 'custom';
-    }
-
-    function selectValueToTrigger(value: string): string {
-      if (value === '\\n') return '\n';
-      if (value === ' ') return ' ';
-      if (value === '\\t') return '\t';
-      return value;
-    }
-
-    flipTriggerSelect.addEventListener('change', () => {
-      flipTriggerCustom.style.display = flipTriggerSelect.value === 'custom' ? 'inline-block' : 'none';
-    });
 
     flipperModal.querySelector('.flip-cancel')?.addEventListener('click', closeFlipperModal);
 
@@ -578,11 +662,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       if (editingFlipper) {
         const machine = state.machines.find(m => m.x === editingFlipper!.x && m.y === editingFlipper!.y);
         if (machine) {
-          if (flipTriggerSelect.value === 'custom') {
-            machine.flipperTrigger = flipTriggerCustom.value || '\n';
-          } else {
-            machine.flipperTrigger = selectValueToTrigger(flipTriggerSelect.value);
-          }
+          machine.flipperTrigger = flipByteInput.getValue();
         }
       }
       closeFlipperModal();
@@ -590,9 +670,140 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
     flipperModal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeFlipperModal();
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) {
         e.preventDefault();
         flipperModal.querySelector('.flip-save')?.dispatchEvent(new Event('click'));
+      }
+    });
+
+    // Set up constant modal
+    let editingConstant: { x: number; y: number } | null = null;
+    const constText = constantModal.querySelector('.const-text') as HTMLInputElement;
+    const constInterval = constantModal.querySelector('.const-interval') as HTMLInputElement;
+
+    function closeConstantModal() {
+      constantModal.style.display = 'none';
+      editingConstant = null;
+    }
+
+    constantModal.querySelector('.const-cancel')?.addEventListener('click', closeConstantModal);
+
+    constantModal.querySelector('.const-save')?.addEventListener('click', () => {
+      if (editingConstant) {
+        const raw = constText.value;
+        // Interpret escape sequences: \n, \t, \\
+        const text = raw.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\\\/g, '\\');
+        input.updateConstantConfig(
+          editingConstant.x,
+          editingConstant.y,
+          text,
+          Math.max(50, parseInt(constInterval.value) || 500),
+        );
+      }
+      closeConstantModal();
+    });
+
+    constantModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeConstantModal();
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        constantModal.querySelector('.const-save')?.dispatchEvent(new Event('click'));
+      }
+    });
+
+    // Set up filter modal with ByteInput
+    let editingFilter: { x: number; y: number } | null = null;
+    const filterByteInputMount = filterModal.querySelector('.filter-byte-input-mount') as HTMLElement;
+    const filterByteInput = new ByteInput({ value: '\n' });
+    filterByteInputMount.appendChild(filterByteInput.el);
+    const filterModeSelect = filterModal.querySelector('.filter-mode-select') as HTMLSelectElement;
+
+    function closeFilterModal() {
+      filterModal.style.display = 'none';
+      editingFilter = null;
+    }
+
+    filterModal.querySelector('.filter-cancel')?.addEventListener('click', closeFilterModal);
+
+    filterModal.querySelector('.filter-save')?.addEventListener('click', () => {
+      if (editingFilter) {
+        input.updateFilterConfig(
+          editingFilter.x,
+          editingFilter.y,
+          filterByteInput.getValue(),
+          filterModeSelect.value as 'pass' | 'block',
+        );
+      }
+      closeFilterModal();
+    });
+
+    filterModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeFilterModal();
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        filterModal.querySelector('.filter-save')?.dispatchEvent(new Event('click'));
+      }
+    });
+
+    // Set up counter modal with ByteInput
+    let editingCounter: { x: number; y: number } | null = null;
+    const counterByteInputMount = counterModal.querySelector('.counter-byte-input-mount') as HTMLElement;
+    const counterByteInput = new ByteInput({ value: '\n' });
+    counterByteInputMount.appendChild(counterByteInput.el);
+
+    function closeCounterModal() {
+      counterModal.style.display = 'none';
+      editingCounter = null;
+    }
+
+    counterModal.querySelector('.counter-cancel')?.addEventListener('click', closeCounterModal);
+
+    counterModal.querySelector('.counter-save')?.addEventListener('click', () => {
+      if (editingCounter) {
+        input.updateCounterConfig(
+          editingCounter.x,
+          editingCounter.y,
+          counterByteInput.getValue(),
+        );
+      }
+      closeCounterModal();
+    });
+
+    counterModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeCounterModal();
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        counterModal.querySelector('.counter-save')?.dispatchEvent(new Event('click'));
+      }
+    });
+
+    // Set up delay modal
+    let editingDelay: { x: number; y: number } | null = null;
+    const delayMsInput = delayModal.querySelector('.delay-ms') as HTMLInputElement;
+
+    function closeDelayModal() {
+      delayModal.style.display = 'none';
+      editingDelay = null;
+    }
+
+    delayModal.querySelector('.delay-cancel')?.addEventListener('click', closeDelayModal);
+
+    delayModal.querySelector('.delay-save')?.addEventListener('click', () => {
+      if (editingDelay) {
+        input.updateDelayConfig(
+          editingDelay.x,
+          editingDelay.y,
+          Math.max(50, parseInt(delayMsInput.value) || 1000),
+        );
+      }
+      closeDelayModal();
+    });
+
+    delayModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDelayModal();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        delayModal.querySelector('.delay-save')?.dispatchEvent(new Event('click'));
       }
     });
 
@@ -800,17 +1011,43 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       },
       onFlipperClick: (machine) => {
         editingFlipper = { x: machine.x, y: machine.y };
-        const selVal = triggerToSelectValue(machine.flipperTrigger);
-        flipTriggerSelect.value = selVal;
-        if (selVal === 'custom') {
-          flipTriggerCustom.style.display = 'inline-block';
-          flipTriggerCustom.value = machine.flipperTrigger;
-        } else {
-          flipTriggerCustom.style.display = 'none';
-          flipTriggerCustom.value = '';
-        }
+        flipByteInput.setValue(machine.flipperTrigger);
         flipperModal.style.display = 'flex';
-        flipTriggerSelect.focus();
+        flipByteInput.focus();
+        events.emit('configureStart');
+      },
+      onConstantClick: (machine) => {
+        editingConstant = { x: machine.x, y: machine.y };
+        // Display escape sequences for readability
+        const displayText = machine.constantText.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
+        constText.value = displayText;
+        constInterval.value = String(machine.constantInterval);
+        constantModal.style.display = 'flex';
+        constText.focus();
+        constText.select();
+        events.emit('configureStart');
+      },
+      onFilterClick: (machine) => {
+        editingFilter = { x: machine.x, y: machine.y };
+        filterByteInput.setValue(machine.filterByte);
+        filterModeSelect.value = machine.filterMode;
+        filterModal.style.display = 'flex';
+        filterByteInput.focus();
+        events.emit('configureStart');
+      },
+      onCounterClick: (machine) => {
+        editingCounter = { x: machine.x, y: machine.y };
+        counterByteInput.setValue(machine.counterTrigger);
+        counterModal.style.display = 'flex';
+        counterByteInput.focus();
+        events.emit('configureStart');
+      },
+      onDelayClick: (machine) => {
+        editingDelay = { x: machine.x, y: machine.y };
+        delayMsInput.value = String(machine.delayMs);
+        delayModal.style.display = 'flex';
+        delayMsInput.focus();
+        delayMsInput.select();
         events.emit('configureStart');
       },
       onToast: (message) => {
@@ -832,6 +1069,14 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       e.stopImmediatePropagation();
       // Forward to InputHandler for game key handling
       if (e.type === 'keydown') {
+        // Emit keyPress for KEYBOARD machines during simulation
+        if (state.running && e.key.length === 1) {
+          events.emit('keyPress', { char: e.key });
+        } else if (state.running && e.key === 'Enter') {
+          events.emit('keyPress', { char: '\n' });
+        } else if (state.running && e.key === 'Tab') {
+          events.emit('keyPress', { char: '\t' });
+        }
         input.handleKeyDown(e);
       }
     };
@@ -839,6 +1084,15 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     // Add at capture phase to run before v86's handlers
     window.addEventListener('keydown', blockV86Keyboard, true);
     window.addEventListener('keyup', blockV86Keyboard, true);
+
+    // Wire keyPress events to KEYBOARD machines
+    events.on('keyPress', (payload) => {
+      for (const machine of state.machines) {
+        if (machine.type === MachineType.KEYBOARD) {
+          machine.outputBuffer += payload.char;
+        }
+      }
+    });
 
     // Create toolbar UI
     createToolbar(toolbar, state, input, sound, {
@@ -878,9 +1132,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
     // Now that toolbar is populated, resize canvas and initialize grid
     renderer.handleResize(state);
-    const cols = Math.floor(canvas.width / GRID_SIZE);
-    const rows = Math.floor(canvas.height / GRID_SIZE);
-    initGrid(state, cols, rows);
+    initGrid(state, GRID_COLS, GRID_ROWS);
 
     // Load the sample preset by default
     const samplePreset = PRESETS.find(p => p.id === 'sample');
@@ -895,6 +1147,35 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
     // Initialize network UI state
     updateNetworkUI();
+
+    // Sidebar resize handle
+    const resizeHandle = container.querySelector('.sidebar-resize-handle') as HTMLElement;
+    const gameEl = container.querySelector('.bashtorio-game') as HTMLElement;
+    let sidebarWidth = 720;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      resizeHandle.classList.add('dragging');
+      const startX = e.clientX;
+      const startWidth = sidebarWidth;
+
+      const onMouseMove = (e: MouseEvent) => {
+        const delta = startX - e.clientX;
+        const newWidth = Math.max(300, Math.min(startWidth + delta, window.innerWidth - 400));
+        sidebarWidth = newWidth;
+        gameEl.style.setProperty('--sidebar-width', `${newWidth}px`);
+        renderer.handleResize(state);
+      };
+
+      const onMouseUp = () => {
+        resizeHandle.classList.remove('dragging');
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
 
     // Clear output button
     const clearOutputBtn = container.querySelector('.clear-output-btn');
@@ -977,12 +1258,18 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     // Animation loop
     let running = true;
     let lastTime = 0;
+    const cursorCoords = toolbar.querySelector('.cursor-coords') as HTMLElement;
     function animate(time: number) {
       if (!running) return;
       const deltaTime = lastTime ? time - lastTime : 0;
       lastTime = time;
       updateSimulation(state, deltaTime, simCallbacks);
       renderer.render(state, time);
+      if (renderer.hoverCol >= 0) {
+        cursorCoords.textContent = `${renderer.hoverCol}, ${renderer.hoverRow}`;
+      } else {
+        cursorCoords.textContent = '';
+      }
       requestAnimationFrame(animate);
     }
     requestAnimationFrame(animate);
@@ -1036,18 +1323,34 @@ function createToolbar(
     { id: 'machine', icon: '🔧', label: 'Place', key: '3' },
   ];
 
-  const placeables: { id: PlaceableType; icon: string; label: string; key: string }[] = [
-    { id: 'belt', icon: '➡️', label: 'Belt', key: 'Q' },
-    { id: 'splitter', icon: '⑂', label: 'Split', key: 'W' },
-    { id: 'source', icon: '📤', label: 'SRC', key: 'E' },
-    { id: 'command', icon: '🖥️', label: 'Shell', key: 'F' },
-    { id: 'sink', icon: '📥', label: 'Sink', key: 'S' },
-    { id: 'display', icon: '💬', label: 'UTF8', key: 'A' },
-    { id: 'emoji', icon: '🎲', label: 'Emoji', key: 'Z' },
-    { id: 'null', icon: '🕳️', label: 'Null', key: 'X' },
-    { id: 'linefeed', icon: '↵', label: 'LF', key: 'C' },
-    { id: 'flipper', icon: '🔀', label: 'Flip', key: 'V' },
+  const placeableColumns: { label: string; items: { id: PlaceableType; icon: string; label: string; key: string }[] }[] = [
+    { label: 'Route', items: [
+      { id: 'belt', icon: '➡️', label: 'Belt', key: 'Q' },
+      { id: 'splitter', icon: '⑂', label: 'Split', key: 'W' },
+      { id: 'flipper', icon: '🔀', label: 'Flip', key: 'V' },
+      { id: 'duplicator', icon: '📋', label: 'Dup', key: 'D' },
+    ]},
+    { label: 'Source', items: [
+      { id: 'source', icon: '📤', label: 'SRC', key: 'E' },
+      { id: 'constant', icon: '♻️', label: 'Loop', key: 'T' },
+      { id: 'keyboard', icon: '⌨️', label: 'Key', key: 'K' },
+      { id: 'linefeed', icon: '↵', label: 'LF', key: 'C' },
+      { id: 'emoji', icon: '🎲', label: 'Emoji', key: 'Z' },
+    ]},
+    { label: 'Process', items: [
+      { id: 'command', icon: '🖥️', label: 'Shell', key: 'F' },
+      { id: 'filter', icon: '🚦', label: 'Filter', key: 'G' },
+      { id: 'counter', icon: '🔢', label: 'Count', key: 'N' },
+      { id: 'delay', icon: '⏱️', label: 'Delay', key: 'B' },
+    ]},
+    { label: 'Output', items: [
+      { id: 'sink', icon: '📥', label: 'Sink', key: 'S' },
+      { id: 'display', icon: '💬', label: 'UTF8', key: 'A' },
+      { id: 'null', icon: '🕳️', label: 'Null', key: 'X' },
+    ]},
   ];
+
+  const placeables = placeableColumns.flatMap(c => c.items);
 
   // Get the current placeable's icon and label
   const currentPlaceable = placeables.find(p => p.id === state.currentPlaceable);
@@ -1067,11 +1370,16 @@ function createToolbar(
                   <span class="tool-label placeable-label">${currentPlaceableLabel}</span>
                 </button>
                 <div class="placeable-popout" style="display: none;">
-                  ${placeables.map(p => `
-                    <button class="placeable-btn ${p.id === state.currentPlaceable ? 'active' : ''}" data-placeable="${p.id}" title="${p.label} (${p.key})">
-                      <span class="tool-icon">${p.icon}</span>
-                      <span class="tool-label">${p.label}</span>
-                    </button>
+                  ${placeableColumns.map(col => `
+                    <div class="popout-column">
+                      <span class="popout-column-label">${col.label}</span>
+                      ${col.items.map(p => `
+                        <button class="placeable-btn ${p.id === state.currentPlaceable ? 'active' : ''}" data-placeable="${p.id}" title="${p.label} (${p.key})">
+                          <span class="tool-icon">${p.icon}</span>
+                          <span class="tool-label">${p.label}</span>
+                        </button>
+                      `).join('')}
+                    </div>
                   `).join('')}
                 </div>
               </div>
@@ -1089,6 +1397,11 @@ function createToolbar(
         <span class="direction-label">Dir:</span>
         <button class="dir-btn">${DirArrows[state.currentDir]}</button>
         <span class="hint">[R]</span>
+      </div>
+      <div class="tool-group">
+        <button class="dir-btn zoom-out-btn" title="Zoom Out">−</button>
+        <span class="zoom-value">${Math.round(state.camera.scale * 100)}%</span>
+        <button class="dir-btn zoom-in-btn" title="Zoom In">+</button>
       </div>
       <div class="tool-group">
         <label>Speed:</label>
@@ -1117,12 +1430,38 @@ function createToolbar(
           <span class="status-text">VM Ready</span>
         </div>
       </div>
+      <div class="tool-group">
+        <span class="cursor-coords"></span>
+      </div>
     </div>
   `;
 
   const popout = toolbar.querySelector('.placeable-popout') as HTMLElement;
   const placeBtn = toolbar.querySelector('.mode-btn[data-mode="machine"]') as HTMLElement;
   const placeIcon = placeBtn?.querySelector('.placeable-icon') as HTMLElement;
+
+  function showPopout() {
+    popout.style.left = '';
+    popout.style.transform = '';
+    popout.style.right = '';
+    popout.style.display = 'flex';
+    // Clamp to viewport
+    const rect = popout.getBoundingClientRect();
+    const btnRect = placeBtn.getBoundingClientRect();
+    const btnCenterX = btnRect.left + btnRect.width / 2;
+    if (rect.left < 0) {
+      popout.style.left = '0';
+      popout.style.transform = 'none';
+    } else if (rect.right > window.innerWidth) {
+      popout.style.left = 'auto';
+      popout.style.right = '0';
+      popout.style.transform = 'none';
+    }
+    // Position arrow to point at button center
+    const popoutRect = popout.getBoundingClientRect();
+    const arrowLeft = btnCenterX - popoutRect.left;
+    popout.style.setProperty('--arrow-left', `${arrowLeft}px`);
+  }
 
   // Mode buttons
   toolbar.querySelectorAll('.mode-btn').forEach(btn => {
@@ -1132,10 +1471,14 @@ function createToolbar(
       if (mode === 'machine') {
         // Toggle popout if already in machine mode, otherwise switch to machine mode and show popout
         if (state.currentMode === 'machine') {
-          popout.style.display = popout.style.display === 'none' ? 'flex' : 'none';
+          if (popout.style.display === 'none') {
+            showPopout();
+          } else {
+            popout.style.display = 'none';
+          }
         } else {
           input.selectMode(mode);
-          popout.style.display = 'flex';
+          showPopout();
         }
       } else {
         input.selectMode(mode);
@@ -1170,6 +1513,24 @@ function createToolbar(
   // Direction button
   toolbar.querySelector('.dir-btn')?.addEventListener('click', () => {
     input.rotateDirection();
+  });
+
+  // Zoom buttons
+  const ZOOM_STEP = 0.25;
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 3;
+  const zoomValue = toolbar.querySelector('.zoom-value') as HTMLElement;
+
+  function applyZoom(newScale: number) {
+    state.camera.scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newScale));
+    zoomValue.textContent = Math.round(state.camera.scale * 100) + '%';
+  }
+
+  toolbar.querySelector('.zoom-in-btn')?.addEventListener('click', () => {
+    applyZoom(state.camera.scale + ZOOM_STEP);
+  });
+  toolbar.querySelector('.zoom-out-btn')?.addEventListener('click', () => {
+    applyZoom(state.camera.scale - ZOOM_STEP);
   });
 
   // Speed slider

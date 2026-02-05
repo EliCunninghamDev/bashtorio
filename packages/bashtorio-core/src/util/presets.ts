@@ -25,8 +25,13 @@ function placeBelt(grid: any[][], x: number, y: number, dir: Direction) {
   grid[x][y] = { type: CellType.BELT, dir };
 }
 
+// Helper to place a splitter
+function placeSplitter(grid: any[][], x: number, y: number, dir: Direction) {
+  grid[x][y] = { type: CellType.SPLITTER, dir, toggle: 0 };
+}
+
 // Helper to place a machine
-function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; sinkId?: number; flipperTrigger?: string; flipperDir?: Direction } = {}) {
+function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; sinkId?: number; flipperTrigger?: string; flipperDir?: Direction; emitInterval?: number } = {}) {
   const idx = machines.length;
   const m: any = {
     x, y, type,
@@ -36,6 +41,7 @@ function placeMachine(grid: any[][], machines: any[], x: number, y: number, type
   };
   if (opts.flipperTrigger !== undefined) m.flipperTrigger = opts.flipperTrigger;
   if (opts.flipperDir !== undefined) m.flipperDir = opts.flipperDir;
+  if (opts.emitInterval !== undefined) m.emitInterval = opts.emitInterval;
   machines.push(m);
   grid[x][y] = { type: CellType.MACHINE, machineIdx: idx };
 }
@@ -377,6 +383,154 @@ function createFlipperSorterPreset(): SaveData {
   };
 }
 
+// Duplicator demo - alternating-case text split into uppercase and lowercase paths
+function createDuplicatorDemoPreset(): SaveData {
+	const cols = 12, rows = 7;
+	const grid = emptyGrid(cols, rows);
+	const machines: any[] = [];
+
+	// Source at (1, 3) - feeds alternating-case text
+	placeMachine(grid, machines, 1, 3, MachineType.SOURCE);
+
+	// Belt from source to duplicator
+	for (let x = 2; x <= 4; x++) {
+		placeBelt(grid, x, 3, Direction.RIGHT);
+	}
+
+	// Duplicator at (5, 3) - splits to upper and lower paths
+	placeMachine(grid, machines, 5, 3, MachineType.DUPLICATOR);
+
+	// --- Upper path: belt UP → uppercase command → sink 1 ---
+	placeBelt(grid, 5, 2, Direction.UP);
+
+	// Uppercase command at (5, 1)
+	placeMachine(grid, machines, 5, 1, MachineType.COMMAND, {
+		command: "tr 'a-z' 'A-Z'",
+	});
+
+	// Belt from uppercase command to sink
+	for (let x = 6; x <= 8; x++) {
+		placeBelt(grid, x, 1, Direction.RIGHT);
+	}
+
+	// Sink 1 at (9, 1)
+	placeMachine(grid, machines, 9, 1, MachineType.SINK, { sinkId: 1 });
+
+	// --- Lower path: belt DOWN → lowercase command → sink 2 ---
+	placeBelt(grid, 5, 4, Direction.DOWN);
+
+	// Lowercase command at (5, 5)
+	placeMachine(grid, machines, 5, 5, MachineType.COMMAND, {
+		command: "tr 'A-Z' 'a-z'",
+	});
+
+	// Belt from lowercase command to sink
+	for (let x = 6; x <= 8; x++) {
+		placeBelt(grid, x, 5, Direction.RIGHT);
+	}
+
+	// Sink 2 at (9, 5)
+	placeMachine(grid, machines, 9, 5, MachineType.SINK, { sinkId: 2 });
+
+	return {
+		version: 1,
+		gridCols: cols,
+		gridRows: rows,
+		grid,
+		machines,
+		sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n',
+		sinkIdCounter: 3,
+	};
+}
+
+// Text Analysis Mega-Factory - elaborate preset showcasing every machine type
+function createMegaFactoryPreset(): SaveData {
+	const cols = 24, rows = 14;
+	const grid = emptyGrid(cols, rows);
+	const machines: any[] = [];
+
+	// ═══ Emoji decorations - top border ═══
+	placeMachine(grid, machines, 0, 0, MachineType.EMOJI);
+	placeMachine(grid, machines, 8, 0, MachineType.EMOJI);
+	placeMachine(grid, machines, 16, 0, MachineType.EMOJI);
+	placeMachine(grid, machines, 23, 0, MachineType.EMOJI);
+
+	// ═══ Main pipeline (Row 1): SOURCE → DUP → UPPERCASE → DUP → SINK ═══
+	placeMachine(grid, machines, 0, 1, MachineType.SOURCE);
+	for (let x = 1; x <= 3; x++) placeBelt(grid, x, 1, Direction.RIGHT);
+	placeMachine(grid, machines, 4, 1, MachineType.DUPLICATOR);
+	for (let x = 5; x <= 7; x++) placeBelt(grid, x, 1, Direction.RIGHT);
+	placeMachine(grid, machines, 8, 1, MachineType.COMMAND, { command: "tr 'a-z' 'A-Z'" });
+	for (let x = 9; x <= 11; x++) placeBelt(grid, x, 1, Direction.RIGHT);
+	placeMachine(grid, machines, 12, 1, MachineType.DUPLICATOR);
+	placeBelt(grid, 13, 1, Direction.RIGHT);
+	placeBelt(grid, 14, 1, Direction.RIGHT);
+	placeMachine(grid, machines, 15, 1, MachineType.SINK, { sinkId: 1 });
+
+	// ═══ Rev branch (from DUP at 12,1 going down) ═══
+	placeBelt(grid, 12, 2, Direction.DOWN);
+	placeBelt(grid, 12, 3, Direction.DOWN);
+	placeMachine(grid, machines, 12, 4, MachineType.COMMAND, { command: 'rev' });
+	placeBelt(grid, 13, 4, Direction.RIGHT);
+	placeBelt(grid, 14, 4, Direction.RIGHT);
+	placeMachine(grid, machines, 15, 4, MachineType.SINK, { sinkId: 2 });
+
+	// ═══ Flipper branch (from DUP at 4,1 going down) ═══
+	placeBelt(grid, 4, 2, Direction.DOWN);
+	placeBelt(grid, 4, 3, Direction.DOWN);
+	placeMachine(grid, machines, 4, 4, MachineType.FLIPPER, {
+		flipperTrigger: '\n',
+		flipperDir: Direction.RIGHT,
+	});
+
+	// Flipper RIGHT path → sort → sink
+	placeBelt(grid, 5, 4, Direction.RIGHT);
+	placeBelt(grid, 6, 4, Direction.RIGHT);
+	placeMachine(grid, machines, 7, 4, MachineType.COMMAND, { command: 'sort' });
+	placeBelt(grid, 8, 4, Direction.RIGHT);
+	placeBelt(grid, 9, 4, Direction.RIGHT);
+	placeMachine(grid, machines, 10, 4, MachineType.SINK, { sinkId: 3 });
+
+	// Flipper DOWN path → sed word-split → splitter
+	placeBelt(grid, 4, 5, Direction.DOWN);
+	placeBelt(grid, 4, 6, Direction.DOWN);
+	placeMachine(grid, machines, 4, 7, MachineType.COMMAND, { command: "sed 's/ /\\n/g'" });
+	placeBelt(grid, 5, 7, Direction.RIGHT);
+	placeBelt(grid, 6, 7, Direction.RIGHT);
+	placeSplitter(grid, 7, 7, Direction.RIGHT); // alternates UP / DOWN
+
+	// Splitter UP path → redirect right → display
+	placeBelt(grid, 7, 6, Direction.RIGHT);
+	placeBelt(grid, 8, 6, Direction.RIGHT);
+	placeMachine(grid, machines, 9, 6, MachineType.DISPLAY);
+
+	// Splitter DOWN path → redirect right → sink
+	placeBelt(grid, 7, 8, Direction.RIGHT);
+	placeBelt(grid, 8, 8, Direction.RIGHT);
+	placeMachine(grid, machines, 9, 8, MachineType.SINK, { sinkId: 4 });
+
+	// ═══ Decorative linefeed → null pair ═══
+	placeMachine(grid, machines, 17, 10, MachineType.LINEFEED);
+	placeBelt(grid, 18, 10, Direction.RIGHT);
+	placeMachine(grid, machines, 19, 10, MachineType.NULL);
+
+	// ═══ Emoji decorations - bottom border ═══
+	placeMachine(grid, machines, 0, 13, MachineType.EMOJI);
+	placeMachine(grid, machines, 8, 13, MachineType.EMOJI);
+	placeMachine(grid, machines, 16, 13, MachineType.EMOJI);
+	placeMachine(grid, machines, 23, 13, MachineType.EMOJI);
+
+	return {
+		version: 1,
+		gridCols: cols,
+		gridRows: rows,
+		grid,
+		machines,
+		sourceText: 'Hello World!\nBashtorio rocks!\nPipes are magic.\nalpha bravo charlie\ndelta echo foxtrot\nThe quick brown fox.\n',
+		sinkIdCounter: 5,
+	};
+}
+
 // Export all presets
 export const PRESETS: Preset[] = [
   {
@@ -432,5 +586,17 @@ export const PRESETS: Preset[] = [
     name: 'Flipper Sorter',
     description: 'sed extracts 3 groups onto lines, flipper routes top+bottom vs middle',
     data: createFlipperSorterPreset(),
+  },
+  {
+    id: 'duplicator-demo',
+    name: 'Duplicator Demo',
+    description: 'Duplicator splits alternating-case text into uppercase and lowercase paths',
+    data: createDuplicatorDemoPreset(),
+  },
+  {
+    id: 'mega-factory',
+    name: 'Text Analysis Mega-Factory',
+    description: 'Elaborate pipeline: duplicators split text into uppercase, reverse, sort, and word-extraction paths with flipper routing and splitter distribution',
+    data: createMegaFactoryPreset(),
   },
 ];

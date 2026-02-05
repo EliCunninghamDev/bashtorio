@@ -92,6 +92,15 @@ export function placeMachine(state: GameState, x: number, y: number, machineType
     flipperTrigger: '\n',
     flipperDir: Direction.RIGHT,
     flipperState: Direction.RIGHT,
+    constantText: 'hello\n',
+    constantInterval: 500,
+    constantPos: 0,
+    filterByte: '\n',
+    filterMode: 'pass',
+    counterTrigger: '\n',
+    counterCount: 0,
+    delayMs: 1000,
+    delayQueue: [],
   };
 
   state.machines.push(machine);

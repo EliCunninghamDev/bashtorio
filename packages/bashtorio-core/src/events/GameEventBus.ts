@@ -14,6 +14,7 @@ export interface GameEventMap {
   directionChange: { dir: Direction };
   speedChange: { speed: number };
   toast: { message: string };
+  keyPress: { char: string };
 }
 
 export type GameEvent = keyof GameEventMap;

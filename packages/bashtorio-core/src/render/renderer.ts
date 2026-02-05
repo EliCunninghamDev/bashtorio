@@ -1,4 +1,6 @@
 import {
+  GRID_COLS,
+  GRID_ROWS,
   GRID_SIZE,
   PACKET_SIZE,
   Direction,
@@ -9,6 +11,8 @@ import {
   type BeltCell,
   type SplitterCell,
   type CursorMode,
+  type Camera,
+  type OrphanedPacket,
 } from '../game/types';
 import type { GameState } from '../game/state';
 import { initGrid } from '../game/grid';
@@ -129,7 +133,13 @@ const MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.EMOJI]:   { bg: '#5a5a2a', border: '#8a8a4a', text: '#ccc' },
   [MachineType.NULL]:     { bg: '#2a2a2a', border: '#555555', text: '#888' },
   [MachineType.LINEFEED]: { bg: '#2a4a5a', border: '#4a8aaa', text: '#ccc' },
-  [MachineType.FLIPPER]:  { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
+  [MachineType.FLIPPER]:    { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
+  [MachineType.DUPLICATOR]: { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
+  [MachineType.CONSTANT]:   { bg: '#2a5a4a', border: '#4a9a7a', text: '#ccc' },
+  [MachineType.FILTER]:     { bg: '#3a3a2a', border: '#7a7a4a', text: '#ccc' },
+  [MachineType.COUNTER]:    { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
+  [MachineType.DELAY]:      { bg: '#4a3a3a', border: '#7a5a5a', text: '#ccc' },
+  [MachineType.KEYBOARD]:   { bg: '#4a2a5a', border: '#7a4a9a', text: '#ccc' },
 };
 
 // ---------------------------------------------------------------------------
@@ -171,34 +181,37 @@ function clamp(n: number, lo: number, hi: number): number {
 
 export interface RendererConfig {
   canvas: HTMLCanvasElement;
-  toolbar: HTMLElement;
-  outputPanel?: HTMLElement;
 }
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private toolbar: HTMLElement;
-  private outputPanel?: HTMLElement;
   private animationTime = 0;
   private hoveredMachine: Machine | null = null;
+  /** Mouse position in world pixels (already inverse-camera-transformed). */
   private mouseX = 0;
   private mouseY = 0;
   private mouseOnCanvas = false;
+  private camera: Camera = { x: 0, y: 0, scale: 1 };
+  /** fitScale * camera.scale - maps world pixels to screen pixels. */
+  private effectiveScale = 1;
+  hoverCol = -1;
+  hoverRow = -1;
 
   constructor(config: RendererConfig) {
     this.canvas = config.canvas;
     this.ctx = config.canvas.getContext('2d')!;
-    this.toolbar = config.toolbar;
-    this.outputPanel = config.outputPanel;
 
     window.addEventListener('resize', () => this.handleResize());
 
-    // Track mouse for hover tooltips and previews
+    // Track mouse for hover tooltips and previews - store as world coords
     this.canvas.addEventListener('mousemove', (e) => {
       const rect = this.canvas.getBoundingClientRect();
-      this.mouseX = e.clientX - rect.left;
-      this.mouseY = e.clientY - rect.top;
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      // Screen → world using effective scale
+      this.mouseX = screenX / this.effectiveScale + this.camera.x;
+      this.mouseY = screenY / this.effectiveScale + this.camera.y;
       this.mouseOnCanvas = true;
     });
 
@@ -227,31 +240,24 @@ export class Renderer {
   }
 
   handleResize(state?: GameState): void {
-    const container = this.canvas.parentElement;
-    if (!container) return;
+    // Reset backing buffer so intrinsic size doesn't prevent the
+    // grid cell (and thus clientWidth/Height) from shrinking.
+    this.canvas.width = 0;
+    this.canvas.height = 0;
+    this.canvas.width = this.canvas.clientWidth;
+    this.canvas.height = this.canvas.clientHeight;
 
-    const rect = container.getBoundingClientRect();
-    const outputWidth = this.outputPanel?.offsetWidth || 0;
+    if (state && (state.gridCols !== GRID_COLS || state.gridRows !== GRID_ROWS)) {
+      const oldGrid = state.grid;
+      const oldCols = state.gridCols;
+      const oldRows = state.gridRows;
 
-    this.canvas.width = rect.width - outputWidth;
-    this.canvas.height = rect.height - this.toolbar.offsetHeight;
+      initGrid(state, GRID_COLS, GRID_ROWS);
 
-    if (state) {
-      const cols = Math.floor(this.canvas.width / GRID_SIZE);
-      const rows = Math.floor(this.canvas.height / GRID_SIZE);
-
-      if (cols !== state.gridCols || rows !== state.gridRows) {
-        const oldGrid = state.grid;
-        const oldCols = state.gridCols;
-        const oldRows = state.gridRows;
-
-        initGrid(state, cols, rows);
-
-        for (let x = 0; x < Math.min(cols, oldCols); x++) {
-          for (let y = 0; y < Math.min(rows, oldRows); y++) {
-            if (oldGrid[x] && oldGrid[x][y]) {
-              state.grid[x][y] = oldGrid[x][y];
-            }
+      for (let x = 0; x < Math.min(GRID_COLS, oldCols); x++) {
+        for (let y = 0; y < Math.min(GRID_ROWS, oldRows); y++) {
+          if (oldGrid[x] && oldGrid[x][y]) {
+            state.grid[x][y] = oldGrid[x][y];
           }
         }
       }
@@ -262,10 +268,19 @@ export class Renderer {
     this.animationTime = time;
     const ctx = this.ctx;
     const { gridCols, gridRows } = state;
+    const cam = state.camera;
+    this.camera = cam;
 
-    // Clear
+    this.effectiveScale = cam.scale;
+
+    // Clear entire canvas (in screen space, before camera transform)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = CLR_CANVAS_BG;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Apply camera transform: world → screen
+    const s = cam.scale;
+    ctx.setTransform(s, 0, 0, s, -cam.x * s, -cam.y * s);
 
     // Grid lines
     ctx.strokeStyle = CLR_GRID_LINE;
@@ -308,6 +323,11 @@ export class Renderer {
       this.drawPacket(packet);
     }
 
+    // Orphaned packets (falling with gravity)
+    for (const op of state.orphanedPackets) {
+      this.drawOrphanedPacket(op);
+    }
+
     // Speech bubbles
     for (const machine of state.machines) {
       if (machine.type === MachineType.DISPLAY && machine.displayText) {
@@ -315,9 +335,11 @@ export class Renderer {
       }
     }
 
-    // Hover detection
+    // Hover detection (mouseX/mouseY are already in world coords)
     const hoverCol = Math.floor(this.mouseX / GRID_SIZE);
     const hoverRow = Math.floor(this.mouseY / GRID_SIZE);
+    this.hoverCol = this.mouseOnCanvas ? hoverCol : -1;
+    this.hoverRow = this.mouseOnCanvas ? hoverRow : -1;
     this.hoveredMachine = null;
 
     for (const machine of state.machines) {
@@ -335,6 +357,9 @@ export class Renderer {
     if (this.mouseOnCanvas && state.currentMode === 'machine') {
       this.drawPlacementPreview(state, hoverCol, hoverRow);
     }
+
+    // Reset transform
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // -------------------------------------------------------------------------
@@ -381,6 +406,24 @@ export class Renderer {
       case 'flipper':
         this.drawMachineBox(col, row, MachineType.FLIPPER, 'FLIP');
         this.drawDirectionArrow(col, row, state.currentDir);
+        break;
+      case 'duplicator':
+        this.drawMachineBox(col, row, MachineType.DUPLICATOR, 'DUP');
+        break;
+      case 'constant':
+        this.drawMachineBox(col, row, MachineType.CONSTANT, 'LOOP');
+        break;
+      case 'filter':
+        this.drawMachineBox(col, row, MachineType.FILTER, 'FLTR');
+        break;
+      case 'counter':
+        this.drawMachineBox(col, row, MachineType.COUNTER, '0');
+        break;
+      case 'delay':
+        this.drawMachineBox(col, row, MachineType.DELAY, 'DLY');
+        break;
+      case 'keyboard':
+        this.drawMachineBox(col, row, MachineType.KEYBOARD, 'KEY');
         break;
     }
 
@@ -586,9 +629,11 @@ export class Renderer {
       ctx.fill();
     }
 
-    // Label (flipper draws a mini packet instead)
+    // Label (flipper and filter draw a mini packet instead)
     if (machine.type === MachineType.FLIPPER) {
       this.drawMiniPacket(cx(machine.x), cy(machine.y), machine.flipperTrigger);
+    } else if (machine.type === MachineType.FILTER) {
+      this.drawMiniPacket(cx(machine.x), cy(machine.y), machine.filterByte);
     } else {
       let label: string;
       switch (machine.type) {
@@ -598,7 +643,12 @@ export class Renderer {
         case MachineType.COMMAND: label = machine.command.split(/\s+/)[0]; break;
         case MachineType.EMOJI:   label = '🎲';   break;
         case MachineType.NULL:     label = 'NULL'; break;
-        case MachineType.LINEFEED: label = 'LF';   break;
+        case MachineType.LINEFEED:   label = 'LF';   break;
+        case MachineType.DUPLICATOR: label = 'DUP';  break;
+        case MachineType.CONSTANT:   label = 'LOOP'; break;
+        case MachineType.COUNTER:    label = String(machine.counterCount); break;
+        case MachineType.DELAY:      label = 'DLY';  break;
+        case MachineType.KEYBOARD:   label = 'KEY';  break;
       }
 
       // Flash effect for command machines: white → green over FLASH_DURATION_MS
@@ -850,6 +900,74 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Orphaned packet (falling with gravity)
+  // -------------------------------------------------------------------------
+
+  private drawOrphanedPacket(op: OrphanedPacket): void {
+    const px = op.worldX;
+    const py = op.worldY;
+    const ctx = this.ctx;
+
+    const char = op.content;
+    const code = char.charCodeAt(0);
+    const isMultibyte = code > 127;
+    const color = this.packetColor(code);
+    const size = PACKET_SIZE / 2;
+
+    // Fade out after 2s
+    const fadeStart = 2000;
+    const fadeDuration = 1000;
+    if (op.age > fadeStart) {
+      ctx.globalAlpha = Math.max(0, 1 - (op.age - fadeStart) / fadeDuration);
+    }
+
+    ctx.fillStyle = CLR_PACKET_BG;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+
+    if (isMultibyte) {
+      ctx.beginPath();
+      ctx.moveTo(px, py - size);
+      ctx.lineTo(px + size, py);
+      ctx.lineTo(px, py + size);
+      ctx.lineTo(px - size, py);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.roundRect(px - size, py - size, size * 2, size * 2, PACKET_CORNER_RADIUS);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = color;
+    ctx.font = FONT_PACKET;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let display = char;
+    if (code < 32) {
+      display = CTRL_NAMES[code];
+      ctx.font = FONT_PACKET_TINY;
+    } else if (code === 32) {
+      display = 'SP';
+      ctx.font = FONT_PACKET_SMALL;
+    } else if (code === 127) {
+      display = 'DEL';
+      ctx.font = FONT_PACKET_TINY;
+    }
+
+    ctx.fillText(display, px, py - 2);
+
+    ctx.fillStyle = CLR_PACKET_HEX;
+    ctx.font = FONT_PACKET_SMALL;
+    ctx.fillText(code.toString(16).toUpperCase().padStart(2, '0'), px, py + 8);
+
+    ctx.globalAlpha = 1;
+  }
+
+  // -------------------------------------------------------------------------
   // Speech bubble (display machines)
   // -------------------------------------------------------------------------
 
@@ -877,9 +995,13 @@ export class Renderer {
     let bubbleX = mx - bubbleWidth / 2;
     let bubbleY = my - BUBBLE_HEIGHT - BUBBLE_GAP;
 
-    // Keep on screen
-    bubbleX = clamp(bubbleX, BUBBLE_MARGIN, this.canvas.width - bubbleWidth - BUBBLE_MARGIN);
-    if (bubbleY < BUBBLE_MARGIN) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
+    // Keep on screen (convert canvas bounds to world coords via effective scale)
+    const es = this.effectiveScale;
+    const visLeft = this.camera.x + BUBBLE_MARGIN / es;
+    const visRight = this.camera.x + this.canvas.width / es - bubbleWidth - BUBBLE_MARGIN / es;
+    const visTop = this.camera.y + BUBBLE_MARGIN / es;
+    bubbleX = clamp(bubbleX, visLeft, visRight);
+    if (bubbleY < visTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
 
     ctx.globalAlpha = alpha;
 
@@ -967,8 +1089,12 @@ export class Renderer {
     let bubbleX = mx - bubbleWidth / 2;
     let bubbleY = my - bubbleHeight - BUBBLE_GAP;
 
-    bubbleX = clamp(bubbleX, BUBBLE_MARGIN, this.canvas.width - bubbleWidth - BUBBLE_MARGIN);
-    if (bubbleY < BUBBLE_MARGIN) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
+    const ttEs = this.effectiveScale;
+    const ttVisLeft = this.camera.x + BUBBLE_MARGIN / ttEs;
+    const ttVisRight = this.camera.x + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
+    const ttVisTop = this.camera.y + BUBBLE_MARGIN / ttEs;
+    bubbleX = clamp(bubbleX, ttVisLeft, ttVisRight);
+    if (bubbleY < ttVisTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
 
     // Background
     ctx.fillStyle = CLR_TOOLTIP_BG;
@@ -1021,8 +1147,13 @@ export class Renderer {
 
   getGridPosition(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
-    const x = Math.floor((clientX - rect.left) / GRID_SIZE);
-    const y = Math.floor((clientY - rect.top) / GRID_SIZE);
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
+    // Screen → world → grid (using effective scale = fitScale * cam.scale)
+    const worldX = screenX / this.effectiveScale + this.camera.x;
+    const worldY = screenY / this.effectiveScale + this.camera.y;
+    const x = Math.floor(worldX / GRID_SIZE);
+    const y = Math.floor(worldY / GRID_SIZE);
     return { x, y };
   }
 }

@@ -32,6 +32,12 @@ interface SerializedMachine {
   emitInterval?: number;
   flipperTrigger?: string;
   flipperDir?: number;
+  constantText?: string;
+  constantInterval?: number;
+  filterByte?: string;
+  filterMode?: 'pass' | 'block';
+  counterTrigger?: string;
+  delayMs?: number;
 }
 
 const SAVE_VERSION = 1;
@@ -77,6 +83,12 @@ export function serializeState(state: GameState): SaveData {
     emitInterval: m.emitInterval,
     flipperTrigger: m.flipperTrigger,
     flipperDir: m.flipperDir,
+    constantText: m.constantText,
+    constantInterval: m.constantInterval,
+    filterByte: m.filterByte,
+    filterMode: m.filterMode,
+    counterTrigger: m.counterTrigger,
+    delayMs: m.delayMs,
   }));
 
   return {
@@ -136,6 +148,15 @@ export function deserializeState(state: GameState, data: SaveData): void {
       flipperTrigger: sm.flipperTrigger ?? '\n',
       flipperDir: sm.flipperDir ?? 0,
       flipperState: sm.flipperDir ?? 0,
+      constantText: sm.constantText ?? 'hello\n',
+      constantInterval: sm.constantInterval ?? 500,
+      constantPos: 0,
+      filterByte: sm.filterByte ?? '\n',
+      filterMode: sm.filterMode ?? 'pass',
+      counterTrigger: sm.counterTrigger ?? '\n',
+      counterCount: 0,
+      delayMs: sm.delayMs ?? 1000,
+      delayQueue: [],
     };
     state.machines.push(machine);
   }

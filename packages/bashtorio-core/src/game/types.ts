@@ -1,4 +1,6 @@
 // Grid and rendering constants
+export const GRID_COLS = 32;
+export const GRID_ROWS = 32;
 export const GRID_SIZE = 48;
 export const PACKET_SIZE = 32;
 export const PACKET_SPEED = 2;
@@ -35,6 +37,12 @@ export enum MachineType {
   NULL = 'null',
   LINEFEED = 'linefeed',
   FLIPPER = 'flipper',
+  DUPLICATOR = 'duplicator',
+  CONSTANT = 'constant',
+  FILTER = 'filter',
+  COUNTER = 'counter',
+  DELAY = 'delay',
+  KEYBOARD = 'keyboard',
 }
 
 export interface EmptyCell {
@@ -92,6 +100,19 @@ export interface Machine {
   flipperTrigger: string;
   flipperDir: number;   // Initial direction (Direction), persisted
   flipperState: number; // Current runtime direction (Direction), reset on sim start
+  // For constant machine
+  constantText: string;
+  constantInterval: number;
+  constantPos: number;
+  // For filter machine
+  filterByte: string;
+  filterMode: 'pass' | 'block';
+  // For counter machine
+  counterTrigger: string;
+  counterCount: number;
+  // For delay machine
+  delayMs: number;
+  delayQueue: { char: string; time: number }[];
 }
 
 export interface Packet {
@@ -106,7 +127,23 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'emoji' | 'null' | 'linefeed' | 'flipper';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'emoji' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard';
+
+export interface OrphanedPacket {
+	id: number;
+	worldX: number;
+	worldY: number;
+	vx: number;
+	vy: number;
+	content: string;
+	age: number;
+}
+
+export interface Camera {
+  x: number;
+  y: number;
+  scale: number;
+}
 
 // Legacy alias for backwards compatibility during migration
 export type ToolType = CursorMode;
