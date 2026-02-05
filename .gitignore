@@ -10,3 +10,5 @@ dist/
 
 public/v86/
 arch-state.bin
+
+*.iso
