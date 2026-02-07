@@ -14,8 +14,9 @@
   inset: 0;
   background: #000;
   display: flex;
-  align-items: center;
+  align-items: start;
   justify-content: center;
+  padding-top: 33vh;
   z-index: 1000;
 }
 
@@ -75,13 +76,65 @@
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr auto;
   grid-template-columns: 1fr auto var(--sidebar-width, 720px);
   overflow: visible;
 }
 
-.game-canvas {
+/* System Bar (top row) */
+.bashtorio-systembar {
   grid-row: 1;
+  grid-column: 1 / -1;
+  background: var(--ui-bg-surface, #1e1e32);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 15px;
+  border-bottom: 1px solid var(--ui-border, #333);
+  z-index: 10;
+  overflow: visible;
+  position: relative;
+}
+
+.bashtorio-systembar .action-btn {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.bashtorio-systembar .vm-status {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+}
+
+.systembar-spacer {
+  flex: 1;
+}
+
+.bashtorio-systembar .mode-btn-wrapper {
+  position: relative;
+  overflow: visible;
+}
+
+/* Storage popout in system bar opens downward */
+.bashtorio-systembar .storage-popout {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.bashtorio-systembar .storage-popout::after {
+  bottom: auto;
+  top: -8px;
+  border-top-color: transparent;
+  border-bottom-color: var(--ui-border-light, #3a3a5a);
+  border-top: none;
+  border-bottom: 8px solid var(--ui-border-light, #3a3a5a);
+}
+
+.game-canvas {
+  grid-row: 2;
   grid-column: 1;
   width: 100%;
   height: 100%;
@@ -92,7 +145,7 @@
 
 /* Sidebar Resize Handle */
 .sidebar-resize-handle {
-  grid-row: 1;
+  grid-row: 2;
   grid-column: 2;
   width: 5px;
   cursor: col-resize;
@@ -108,7 +161,7 @@
 
 /* Sidebar */
 .bashtorio-sidebar {
-  grid-row: 1;
+  grid-row: 2;
   grid-column: 3;
   background: var(--ui-bg, #1a1a2e);
   border-left: none;
@@ -124,6 +177,49 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Stats Panel */
+.bashtorio-stats {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	border-top: 1px solid var(--ui-border, #333);
+}
+
+.stats-body {
+	padding: 8px 12px;
+}
+
+.stats-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 6px 16px;
+}
+
+.stat-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.stat-label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--ui-fg-muted, #888);
+}
+
+.stat-value {
+	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-size: 0.8rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--ui-accent, #00d9ff);
+}
+
+.stat-value.stat-error {
+	color: #e09690;
 }
 
 .bashtorio-streams {
@@ -484,7 +580,7 @@
 
 /* Toolbar */
 .bashtorio-toolbar {
-  grid-row: 2;
+  grid-row: 3;
   grid-column: 1 / -1;
   /* spans all columns including resize handle */
   background: var(--ui-bg-surface, #1e1e32);
@@ -753,11 +849,20 @@
   text-align: center;
 }
 
-.cursor-coords {
+.version-info {
+  margin-left: auto;
+  font-size: 0.75rem;
   color: var(--ui-fg-muted, #666);
-  font-size: 0.8rem;
-  font-family: 'Consolas', 'Monaco', monospace;
-  min-width: 60px;
+}
+
+.version-info a {
+  color: var(--ui-fg-muted, #888);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.version-info a:hover {
+  color: var(--ui-fg, #fff);
 }
 
 .action-btn {
@@ -1405,6 +1510,96 @@
 }
 
 .ack-footer button:hover {
+	opacity: 0.9;
+}
+
+/* Help Modal */
+.help-modal-content {
+	min-width: 550px;
+	max-width: 750px;
+	max-height: 85vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.help-body {
+	flex: 1;
+	overflow-y: auto;
+	max-height: 70vh;
+	padding-right: 8px;
+}
+
+.help-body h4 {
+	color: var(--ui-accent, #00d9ff);
+	margin: 24px 0 10px 0;
+	font-size: 1rem;
+	border-bottom: 1px solid var(--ui-border, #333);
+	padding-bottom: 6px;
+}
+
+.help-body h4:first-child {
+	margin-top: 0;
+}
+
+.help-body p {
+	color: var(--ui-fg-secondary, #aaa);
+	font-size: 0.9rem;
+	line-height: 1.6;
+	margin: 8px 0;
+}
+
+.help-body code {
+	background: var(--ui-bg-input, #12121f);
+	color: var(--ui-accent, #00d9ff);
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-family: 'Cascadia Code', 'Fira Code', monospace;
+	font-size: 0.85rem;
+}
+
+.help-body pre {
+	background: var(--ui-bg-input, #12121f);
+	border: 1px solid var(--ui-border, #333);
+	border-radius: 6px;
+	padding: 12px 14px;
+	margin: 10px 0;
+	overflow-x: auto;
+	font-family: 'Cascadia Code', 'Fira Code', monospace;
+	font-size: 0.85rem;
+	line-height: 1.5;
+	color: var(--ui-fg-secondary, #aaa);
+}
+
+.help-body pre code {
+	background: none;
+	padding: 0;
+	color: inherit;
+}
+
+.help-diagram {
+	color: var(--ui-accent, #00d9ff) !important;
+}
+
+.help-footer {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	margin-top: 16px;
+	padding-top: 12px;
+	border-top: 1px solid var(--ui-border, #333);
+}
+
+.help-footer button {
+	padding: 8px 20px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.95rem;
+	background: var(--ui-accent, #00d9ff);
+	color: #000;
+}
+
+.help-footer button:hover {
 	opacity: 0.9;
 }
 

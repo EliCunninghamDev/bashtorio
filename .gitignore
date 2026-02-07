@@ -1,14 +1,36 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 .astro/
 *.tsbuildinfo
 
+# Environment
 .env
 .env.*
-.DS_Store
-*.log
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# v86 / VM artifacts
 public/v86/
 arch-state.bin
-
 *.iso
+
+# Editor
+.claude
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Turbo
+.turbo/

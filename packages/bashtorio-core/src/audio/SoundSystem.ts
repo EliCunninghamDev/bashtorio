@@ -2,9 +2,9 @@
 
 import type { GameEventBus, GameEvent } from '../events/GameEventBus';
 
-export type SoundName = 'place' | 'simulationStart' | 'simulationEnd' | 'select' | 'erase' | 'configureStart' | 'simulationAmbient' | 'editingAmbient' | 'shellType' | 'shellTypeEnter' | 'sinkReceive' | 'streamWrite';
+export type SoundName = 'place' | 'simulationStart' | 'simulationEnd' | 'select' | 'erase' | 'configureStart' | 'simulationAmbient' | 'editingAmbient' | 'shellType' | 'shellTypeEnter' | 'sinkReceive' | 'streamWrite' | 'pack';
 
-const SOUND_NAMES: SoundName[] = ['place', 'simulationStart', 'simulationEnd', 'select', 'erase', 'configureStart', 'simulationAmbient', 'editingAmbient', 'shellType', 'shellTypeEnter', 'sinkReceive', 'streamWrite'];
+const SOUND_NAMES: SoundName[] = ['place', 'simulationStart', 'simulationEnd', 'select', 'erase', 'configureStart', 'simulationAmbient', 'editingAmbient', 'shellType', 'shellTypeEnter', 'sinkReceive', 'streamWrite', 'pack'];
 
 const AMBIENT_SOUNDS: ReadonlySet<SoundName> = new Set(['editingAmbient', 'simulationAmbient']);
 
@@ -184,6 +184,16 @@ export class SoundSystem {
       this.play('sinkReceive', { randomPitch: 0.15 });
     });
     this.unsubscribers.push(emitUnsub);
+
+    // pack: play pack sound with random pitch
+    const packUnsub = events.on('pack', () => {
+      const now = performance.now();
+      const last = this.lastPlayTime.get('pack') ?? 0;
+      if (now - last < KEYPRESS_MIN_INTERVAL) return;
+      this.lastPlayTime.set('pack', now);
+      this.play('pack', { randomPitch: 0.15 });
+    });
+    this.unsubscribers.push(packUnsub);
 
     // streamWrite: soft blip with random pitch
     const streamWriteUnsub = events.on('streamWrite', () => {

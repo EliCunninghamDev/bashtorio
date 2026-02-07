@@ -18,6 +18,8 @@ export interface GameEventMap {
   commandStart: { machineId: string; command: string; input: string; stream?: boolean };
   commandComplete: { machineId: string; command: string; output: string; durationMs: number; error: boolean; stream?: boolean };
   streamWrite: { machineId: string; bytes: number };
+  pack: { machineId: string; length: number };
+  saveLoaded: { source: string };
 }
 
 export type GameEvent = keyof GameEventMap;

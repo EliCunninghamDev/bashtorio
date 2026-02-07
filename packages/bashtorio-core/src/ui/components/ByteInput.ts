@@ -152,7 +152,7 @@ export class ByteInput {
 		this.pickerBtn = document.createElement('button');
 		this.pickerBtn.type = 'button';
 		this.pickerBtn.className = 'byte-input-picker-btn';
-		this.pickerBtn.textContent = '\u25BE'; // ▾
+		this.pickerBtn.textContent = '\u2261'; // ≡
 		this.pickerBtn.title = 'Pick from common bytes';
 
 		row.appendChild(this.input);

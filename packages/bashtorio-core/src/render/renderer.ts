@@ -8,18 +8,25 @@ import {
   MachineType,
   type Machine,
   type CommandMachine,
+  type PackerMachine,
   type SourceMachine,
+  type SinkMachine,
   type DisplayMachine,
+  type RouterMachine,
+  type ReplaceMachine,
+  type MathMachine,
+  type WirelessMachine,
   type Packet,
   type BeltCell,
-  type SplitterCell,
+  type SplitterMachine,
+  type SevenSegMachine,
   type CursorMode,
   type Camera,
   type OrphanedPacket,
 } from '../game/types';
 import type { ColorTheme, MachineColor } from '../util/themes';
 import type { GameState } from '../game/state';
-import { initGrid } from '../game/grid';
+import { initGrid, getSplitterSecondary } from '../game/grid';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -37,7 +44,6 @@ const BELT_ARROW_COUNT_MAX = 1;
 
 const SPLITTER_INSET = 2;
 const SPLITTER_LINE_WIDTH = 3;
-const SPLITTER_EDGE_PAD = 4;
 
 const DOT_COUNT = 4;
 const DOT_SPACING = 7;
@@ -132,7 +138,6 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SINK]:    { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
   [MachineType.COMMAND]: { bg: '#0a0a0a', border: '#cccccc', text: CLR_CMD_GREEN },
   [MachineType.DISPLAY]: { bg: '#5a3a6a', border: '#8a5a9a', text: '#ccc' },
-  [MachineType.EMOJI]:   { bg: '#5a5a2a', border: '#8a8a4a', text: '#ccc' },
   [MachineType.NULL]:     { bg: '#2a2a2a', border: '#555555', text: '#888' },
   [MachineType.LINEFEED]: { bg: '#2a4a5a', border: '#4a8aaa', text: '#ccc' },
   [MachineType.FLIPPER]:    { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
@@ -142,6 +147,18 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.COUNTER]:    { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
   [MachineType.DELAY]:      { bg: '#4a3a3a', border: '#7a5a5a', text: '#ccc' },
   [MachineType.KEYBOARD]:   { bg: '#4a2a5a', border: '#7a4a9a', text: '#ccc' },
+  [MachineType.PACKER]:     { bg: '#3a2a4a', border: '#6a4a8a', text: '#ccc' },
+  [MachineType.UNPACKER]:   { bg: '#4a2a3a', border: '#8a4a6a', text: '#ccc' },
+  [MachineType.ROUTER]:     { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
+  [MachineType.GATE]:       { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
+  [MachineType.WIRELESS]:   { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
+  [MachineType.REPLACE]:    { bg: '#5a5a2a', border: '#8a8a4a', text: '#ccc' },
+  [MachineType.MATH]:       { bg: '#2a5a2a', border: '#4a8a4a', text: '#ccc' },
+  [MachineType.CLOCK]:      { bg: '#5a2a4a', border: '#8a4a7a', text: '#ccc' },
+  [MachineType.LATCH]:      { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
+  [MachineType.MERGER]:     { bg: '#3a2a4a', border: '#6a4a8a', text: '#ccc' },
+  [MachineType.SPLITTER]:   { bg: '#3a2a4a', border: '#8a6aaa', text: '#ccc' },
+  [MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
 };
 
 // ---------------------------------------------------------------------------
@@ -210,6 +227,14 @@ function cy(row: number): number { return row * GRID_SIZE + HALF_GRID; }
 
 /** Linear interpolation. */
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+/** Format a byte count as a human-readable string (B, KB, MB, GB). */
+function formatBytes(n: number): string {
+	if (n < 1024) return `${n} B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+	if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+	return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
 
 /** Clamp n into [lo, hi]. */
 function clamp(n: number, lo: number, hi: number): number {
@@ -348,8 +373,6 @@ export class Renderer {
         const cell = state.grid[x][y];
         if (cell.type === CellType.BELT) {
           this.drawBelt(x, y, (cell as BeltCell).dir, state.running);
-        } else if (cell.type === CellType.SPLITTER) {
-          this.drawSplitter(x, y, (cell as SplitterCell).dir);
         }
       }
     }
@@ -388,6 +411,13 @@ export class Renderer {
         this.hoveredMachine = machine;
         break;
       }
+      if (machine.type === MachineType.SPLITTER) {
+        const sec = getSplitterSecondary(machine as SplitterMachine);
+        if (sec.x === hoverCol && sec.y === hoverRow) {
+          this.hoveredMachine = machine;
+          break;
+        }
+      }
     }
 
     if (this.hoveredMachine && this.hoveredMachine.type === MachineType.COMMAND) {
@@ -399,6 +429,11 @@ export class Renderer {
     // Placement preview
     if (this.mouseOnCanvas && state.currentMode === 'machine') {
       this.drawPlacementPreview(state, hoverCol, hoverRow);
+    }
+
+    // Cursor coordinates label
+    if (this.mouseOnCanvas && hoverCol >= 0 && hoverCol < state.gridCols && hoverRow >= 0 && hoverRow < state.gridRows) {
+      this.drawCursorCoords(state, hoverCol, hoverRow);
     }
 
     // Reset transform
@@ -422,9 +457,15 @@ export class Renderer {
       case 'belt':
         this.drawBelt(col, row, state.currentDir);
         break;
-      case 'splitter':
-        this.drawSplitter(col, row, state.currentDir);
+      case 'splitter': {
+        const sec = getSplitterSecondary({ dir: state.currentDir, x: col, y: row });
+        if (sec.x >= 0 && sec.x < state.gridCols && sec.y >= 0 && sec.y < state.gridRows) {
+          const sec_cell = state.grid[sec.x]?.[sec.y];
+          if (!sec_cell || sec_cell.type === CellType.MACHINE) break;
+          this.drawSplitterMachine({ x: col, y: row, dir: state.currentDir } as SplitterMachine);
+        }
         break;
+      }
       case 'source':
         this.drawMachineBox(col, row, MachineType.SOURCE, 'SRC');
         break;
@@ -436,9 +477,6 @@ export class Renderer {
         break;
       case 'display':
         this.drawMachineBox(col, row, MachineType.DISPLAY, 'UTF8');
-        break;
-      case 'emoji':
-        this.drawMachineBox(col, row, MachineType.EMOJI, '🎲');
         break;
       case 'null':
         this.drawMachineBox(col, row, MachineType.NULL, 'NULL');
@@ -468,9 +506,75 @@ export class Renderer {
       case 'keyboard':
         this.drawMachineBox(col, row, MachineType.KEYBOARD, 'KEY');
         break;
+      case 'packer':
+        this.drawMachineBox(col, row, MachineType.PACKER, 'PACK');
+        this.drawDirectionArrow(col, row, state.currentDir);
+        break;
+      case 'unpacker':
+        this.drawMachineBox(col, row, MachineType.UNPACKER, 'UNPK');
+        break;
+      case 'router':
+        this.drawMachineBox(col, row, MachineType.ROUTER, 'RTR');
+        this.drawDirectionArrow(col, row, state.currentDir);
+        break;
+      case 'gate':
+        this.drawMachineBox(col, row, MachineType.GATE, 'GATE');
+        break;
+      case 'wireless':
+        this.drawMachineBox(col, row, MachineType.WIRELESS, 'W0');
+        break;
+      case 'replace':
+        this.drawMachineBox(col, row, MachineType.REPLACE, 'RPL');
+        break;
+      case 'math':
+        this.drawMachineBox(col, row, MachineType.MATH, '+1');
+        break;
+      case 'clock':
+        this.drawMachineBox(col, row, MachineType.CLOCK, 'CLK');
+        break;
+      case 'latch':
+        this.drawMachineBox(col, row, MachineType.LATCH, 'LAT');
+        break;
+      case 'merger':
+        this.drawMachineBox(col, row, MachineType.MERGER, 'MRG');
+        break;
+      case 'sevenseg':
+        this.drawMachineBox(col, row, MachineType.SEVENSEG, '7SEG');
+        break;
     }
 
     ctx.globalAlpha = 1;
+  }
+
+  // -------------------------------------------------------------------------
+  // Cursor coordinates label
+  // -------------------------------------------------------------------------
+
+  private drawCursorCoords(_state: GameState, col: number, row: number): void {
+    const ctx = this.ctx;
+    const label = `${col}, ${row}`;
+
+    ctx.font = '10px Consolas, monospace';
+    const metrics = ctx.measureText(label);
+    const textW = metrics.width;
+    const textH = 10;
+    const padX = 3;
+    const padY = 2;
+    const gap = 2;
+
+    // Position at bottom-right corner of the hovered grid cell, offset outside
+    const x = (col + 1) * GRID_SIZE + gap;
+    const y = (row + 1) * GRID_SIZE + gap;
+
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x - padX, y - padY, textW + padX * 2, textH + padY * 2);
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, x, y);
   }
 
   // -------------------------------------------------------------------------
@@ -591,58 +695,153 @@ export class Renderer {
   // Splitter
   // -------------------------------------------------------------------------
 
-  private drawSplitter(col: number, row: number, dir: Direction): void {
-    const px = gx(col);
-    const py = gy(row);
-    const centerX = cx(col);
-    const centerY = cy(row);
+  private drawSplitterMachine(machine: { x: number; y: number; dir: Direction }): void {
+    const sec = getSplitterSecondary(machine);
     const ctx = this.ctx;
+    const dir = machine.dir;
+    const isHorizontal = dir === Direction.RIGHT || dir === Direction.LEFT;
 
+    // Bounding rect spanning both cells
+    const px = gx(Math.min(machine.x, sec.x));
+    const py = gy(Math.min(machine.y, sec.y));
+    const w = isHorizontal ? GRID_SIZE : GRID_SIZE * 2;
+    const h = isHorizontal ? GRID_SIZE * 2 : GRID_SIZE;
+
+    // Background
     ctx.fillStyle = CLR_SPLITTER_BG;
     ctx.fillRect(px + SPLITTER_INSET, py + SPLITTER_INSET,
-      GRID_SIZE - SPLITTER_INSET * 2, GRID_SIZE - SPLITTER_INSET * 2);
+      w - SPLITTER_INSET * 2, h - SPLITTER_INSET * 2);
+
+    // Border
+    ctx.strokeStyle = CLR_SPLITTER_SYMBOL;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + SPLITTER_INSET, py + SPLITTER_INSET,
+      w - SPLITTER_INSET * 2, h - SPLITTER_INSET * 2);
+
+    // Y-fork symbol centered in combined area
+    const midX = px + w / 2;
+    const midY = py + h / 2;
+    const len = GRID_SIZE / 3;
 
     ctx.strokeStyle = CLR_SPLITTER_SYMBOL;
     ctx.lineWidth = SPLITTER_LINE_WIDTH;
-
-    const len = GRID_SIZE / 3;
-
     ctx.beginPath();
+
     switch (dir) {
       case Direction.RIGHT:
-        ctx.moveTo(px + SPLITTER_EDGE_PAD, centerY);
-        ctx.lineTo(centerX, centerY);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + len, centerY - len / 2);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + len, centerY + len / 2);
+        // Input from left, fork to upper-right and lower-right
+        ctx.moveTo(midX - len, midY);
+        ctx.lineTo(midX, midY);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + len, midY - len);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + len, midY + len);
         break;
       case Direction.LEFT:
-        ctx.moveTo(px + GRID_SIZE - SPLITTER_EDGE_PAD, centerY);
-        ctx.lineTo(centerX, centerY);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX - len, centerY - len / 2);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX - len, centerY + len / 2);
+        ctx.moveTo(midX + len, midY);
+        ctx.lineTo(midX, midY);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - len, midY - len);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - len, midY + len);
         break;
       case Direction.DOWN:
-        ctx.moveTo(centerX, py + SPLITTER_EDGE_PAD);
-        ctx.lineTo(centerX, centerY);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX - len / 2, centerY + len);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + len / 2, centerY + len);
+        ctx.moveTo(midX, midY - len);
+        ctx.lineTo(midX, midY);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - len, midY + len);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + len, midY + len);
         break;
       case Direction.UP:
-        ctx.moveTo(centerX, py + GRID_SIZE - SPLITTER_EDGE_PAD);
-        ctx.lineTo(centerX, centerY);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX - len / 2, centerY - len);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + len / 2, centerY - len);
+        ctx.moveTo(midX, midY + len);
+        ctx.lineTo(midX, midY);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - len, midY - len);
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + len, midY - len);
         break;
     }
     ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#ccc';
+    ctx.font = FONT_LABEL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SPLT', midX, midY + len + 10);
+  }
+
+  // -------------------------------------------------------------------------
+  // Seven-segment display
+  // -------------------------------------------------------------------------
+
+  private drawSevenSeg(machine: SevenSegMachine): void {
+    const px = gx(machine.x);
+    const py = gy(machine.y);
+    const ctx = this.ctx;
+
+    // Black background + white border
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+
+    // Segment map: standard 7-seg a-g, bitmask per hex digit
+    //   a=0x01 (top), b=0x02 (top-right), c=0x04 (bottom-right),
+    //   d=0x08 (bottom), e=0x10 (bottom-left), f=0x20 (top-left), g=0x40 (middle)
+    const SEGS: Record<string, number> = {
+      '0': 0x3F, '1': 0x06, '2': 0x5B, '3': 0x4F,
+      '4': 0x66, '5': 0x6D, '6': 0x7D, '7': 0x07,
+      '8': 0x7F, '9': 0x6F, 'A': 0x77, 'B': 0x7C,
+      'C': 0x39, 'D': 0x5E, 'E': 0x79, 'F': 0x71,
+    };
+
+    // Map lastByte to hex digit
+    let mask = 0;
+    if (machine.lastByte >= 0) {
+      const hexStr = machine.lastByte.toString(16).toUpperCase();
+      // Show last hex digit
+      const digit = hexStr[hexStr.length - 1];
+      mask = SEGS[digit] ?? 0;
+    }
+
+    // Segment geometry scaled to cell interior
+    const inset = 8;
+    const sx = px + CELL_INSET + inset;
+    const sy = py + CELL_INSET + inset;
+    const sw = CELL_INNER - inset * 2;    // segment area width
+    const sh = CELL_INNER - inset * 2;    // segment area height
+    const hmid = sh / 2;                  // vertical midpoint
+
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 3;
+
+    // Draw each segment: lit = red, unlit = very dark gray
+    const drawSeg = (bit: number, x1: number, y1: number, x2: number, y2: number) => {
+      ctx.strokeStyle = (mask & bit) ? '#ff0000' : '#1a1a1a';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    };
+
+    const m = 2; // margin from corners
+    // a: top horizontal
+    drawSeg(0x01, sx + m, sy, sx + sw - m, sy);
+    // b: top-right vertical
+    drawSeg(0x02, sx + sw, sy + m, sx + sw, sy + hmid - m);
+    // c: bottom-right vertical
+    drawSeg(0x04, sx + sw, sy + hmid + m, sx + sw, sy + sh - m);
+    // d: bottom horizontal
+    drawSeg(0x08, sx + m, sy + sh, sx + sw - m, sy + sh);
+    // e: bottom-left vertical
+    drawSeg(0x10, sx, sy + hmid + m, sx, sy + sh - m);
+    // f: top-left vertical
+    drawSeg(0x20, sx, sy + m, sx, sy + hmid - m);
+    // g: middle horizontal
+    drawSeg(0x40, sx + m, sy + hmid, sx + sw - m, sy + hmid);
   }
 
   // -------------------------------------------------------------------------
@@ -650,6 +849,18 @@ export class Renderer {
   // -------------------------------------------------------------------------
 
   private drawMachine(machine: Machine): void {
+    // Splitter: draw 2-cell shape and skip standard box
+    if (machine.type === MachineType.SPLITTER) {
+      this.drawSplitterMachine(machine as SplitterMachine);
+      return;
+    }
+
+    // Seven-segment display: custom rendering
+    if (machine.type === MachineType.SEVENSEG) {
+      this.drawSevenSeg(machine as SevenSegMachine);
+      return;
+    }
+
     const px = gx(machine.x);
     const py = gy(machine.y);
     const ctx = this.ctx;
@@ -673,33 +884,62 @@ export class Renderer {
       ctx.fill();
     }
 
-    // Label (flipper and filter draw a mini packet instead)
-    if (machine.type === MachineType.FLIPPER) {
-      this.drawMiniPacket(cx(machine.x), cy(machine.y), machine.flipperTrigger);
-    } else if (machine.type === MachineType.FILTER) {
+    // Label (filter/counter/router/replace draw a mini packet instead)
+    if (machine.type === MachineType.FILTER) {
       this.drawMiniPacket(cx(machine.x), cy(machine.y), machine.filterByte);
+    } else if (machine.type === MachineType.ROUTER) {
+      this.drawMiniPacket(cx(machine.x), cy(machine.y), (machine as RouterMachine).routerByte);
+    } else if (machine.type === MachineType.REPLACE) {
+      const rm = machine as ReplaceMachine;
+      this.drawMiniPacket(cx(machine.x) - 8, cy(machine.y), rm.replaceFrom);
+      this.drawMiniPacket(cx(machine.x) + 8, cy(machine.y), rm.replaceTo);
+    } else if (machine.type === MachineType.COUNTER) {
+      this.drawMiniPacket(cx(machine.x), cy(machine.y) - 6, machine.counterTrigger);
+      ctx.fillStyle = color.text;
+      ctx.font = FONT_PACKET_SMALL;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(machine.counterCount), cx(machine.x), cy(machine.y) + 10);
     } else {
       let label: string;
       switch (machine.type) {
         case MachineType.SOURCE:  label = 'SRC';  break;
-        case MachineType.SINK:    label = 'SINK'; break;
+        case MachineType.SINK: {
+          const sinkName = (machine as SinkMachine).name;
+          label = sinkName && sinkName.length > 4 ? sinkName.slice(0, 4) : (sinkName || 'SINK');
+          break;
+        }
         case MachineType.DISPLAY: label = 'UTF8'; break;
         case MachineType.COMMAND: label = machine.command.split(/\s+/)[0]; break;
-        case MachineType.EMOJI:   label = '🎲';   break;
         case MachineType.NULL:     label = 'NULL'; break;
         case MachineType.LINEFEED:   label = 'LF';   break;
+        case MachineType.FLIPPER:    label = 'FLIP'; break;
         case MachineType.DUPLICATOR: label = 'DUP';  break;
         case MachineType.CONSTANT:   label = 'LOOP'; break;
-        case MachineType.COUNTER:    label = String(machine.counterCount); break;
         case MachineType.DELAY:      label = 'DLY';  break;
         case MachineType.KEYBOARD:   label = 'KEY';  break;
+        case MachineType.PACKER:     label = 'PACK'; break;
+        case MachineType.UNPACKER:   label = 'UNPK'; break;
+        case MachineType.GATE:       label = 'GATE'; break;
+        case MachineType.WIRELESS:   label = 'W' + (machine as WirelessMachine).wirelessChannel; break;
+        case MachineType.MATH: {
+          const mm = machine as MathMachine;
+          const opSyms: Record<string, string> = { add: '+', sub: '-', mul: '*', mod: '%', xor: '^', and: '&', or: '|', not: '~' };
+          label = (opSyms[mm.mathOp] || mm.mathOp) + mm.mathOperand;
+          break;
+        }
+        case MachineType.CLOCK:      label = 'CLK';  break;
+        case MachineType.LATCH:      label = 'LAT';  break;
+        case MachineType.MERGER:     label = 'MRG';  break;
       }
 
-      // Flash effect for command machines: white → green over FLASH_DURATION_MS
+      // Flash effect for command/packer machines: white → green over FLASH_DURATION_MS
       const flashTime = machine.type === MachineType.COMMAND
         ? Math.max(machine.lastCommandTime, machine.lastStreamWriteTime)
-        : 0;
-      if (machine.type === MachineType.COMMAND && flashTime > 0) {
+        : machine.type === MachineType.PACKER
+          ? machine.lastCommandTime
+          : 0;
+      if ((machine.type === MachineType.COMMAND || machine.type === MachineType.PACKER) && flashTime > 0) {
         const elapsed = performance.now() - flashTime;
         if (elapsed < FLASH_DURATION_MS) {
           const t = elapsed / FLASH_DURATION_MS;
@@ -738,9 +978,25 @@ export class Renderer {
       }
     }
 
+    // Accumulation dots for packer machines
+    if (machine.type === MachineType.PACKER) {
+      this.drawPackerDots(px, py, machine);
+    }
+
     // Direction arrow for flipper machines
     if (machine.type === MachineType.FLIPPER) {
       this.drawDirectionArrow(machine.x, machine.y, machine.flipperState as Direction);
+    }
+
+    // Direction arrow for packer machines
+    if (machine.type === MachineType.PACKER) {
+      this.drawDirectionArrow(machine.x, machine.y, machine.packerDir);
+    }
+
+    // Direction arrows for router machines (match + else)
+    if (machine.type === MachineType.ROUTER) {
+      this.drawDirectionArrow(machine.x, machine.y, (machine as RouterMachine).routerMatchDir);
+      this.drawDirectionArrow(machine.x, machine.y, (machine as RouterMachine).routerElseDir);
     }
   }
 
@@ -761,6 +1017,32 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, Math.PI * 2);
       if (i < inputFilled) {
+        ctx.fillStyle = CLR_INPUT_AMBER;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = CLR_DOT_EMPTY;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Packer accumulation dots
+  // -------------------------------------------------------------------------
+
+  private drawPackerDots(px: number, py: number, machine: PackerMachine): void {
+    const ctx = this.ctx;
+    const totalWidth = (DOT_COUNT - 1) * DOT_SPACING;
+    const startX = px + HALF_GRID - totalWidth / 2;
+
+    const filled = machine.accumulatedBuffer.length % DOT_MOD;
+
+    const botY = py + GRID_SIZE - DOT_Y_INSET;
+    for (let i = 0; i < DOT_COUNT; i++) {
+      ctx.beginPath();
+      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, Math.PI * 2);
+      if (i < filled) {
         ctx.fillStyle = CLR_INPUT_AMBER;
         ctx.fill();
       } else {
@@ -911,8 +1193,15 @@ export class Renderer {
     const py = gy(packet.y) + packet.offsetY;
     const ctx = this.ctx;
 
-    const char = packet.content;
-    const code = char.charCodeAt(0);
+    const content = packet.content;
+
+    // Multi-character string packet (from PACKER)
+    if (content.length > 1) {
+      this.drawStringPacket(px, py, content, 1);
+      return;
+    }
+
+    const code = content.charCodeAt(0);
 
     const isMultibyte = code > 127;
     const color = this.packetColor(code);
@@ -947,7 +1236,7 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    let display = char;
+    let display = content;
     if (code < 32) {
       display = CTRL_NAMES[code];
       ctx.font = FONT_PACKET_TINY;
@@ -978,6 +1267,36 @@ export class Renderer {
     return CLR_PACKET_PUNCT;
   }
 
+  /** Draw a multi-character string packet (from PACKER). */
+  private drawStringPacket(px: number, py: number, content: string, alpha: number): void {
+    const ctx = this.ctx;
+    const size = PACKET_SIZE / 2;
+    const w = size * 2 + 8;
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = CLR_PACKET_BG;
+    ctx.strokeStyle = CLR_PACKET_EXTENDED;
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.roundRect(px - w / 2, py - size, w, size * 2, PACKET_CORNER_RADIUS);
+    ctx.fill();
+    ctx.stroke();
+
+    // "STR" label
+    ctx.fillStyle = CLR_PACKET_EXTENDED;
+    ctx.font = FONT_PACKET_SMALL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('STR', px, py - 4);
+
+    // Length underneath
+    ctx.fillStyle = CLR_PACKET_HEX;
+    ctx.fillText(String(content.length), px, py + 6);
+
+    ctx.globalAlpha = 1;
+  }
+
   // -------------------------------------------------------------------------
   // Orphaned packet (falling with gravity)
   // -------------------------------------------------------------------------
@@ -987,11 +1306,7 @@ export class Renderer {
     const py = op.worldY;
     const ctx = this.ctx;
 
-    const char = op.content;
-    const code = char.charCodeAt(0);
-    const isMultibyte = code > 127;
-    const color = this.packetColor(code);
-    const size = PACKET_SIZE / 2;
+    const content = op.content;
 
     // Fade out after 2s
     const fadeStart = 2000;
@@ -999,6 +1314,18 @@ export class Renderer {
     if (op.age > fadeStart) {
       ctx.globalAlpha = Math.max(0, 1 - (op.age - fadeStart) / fadeDuration);
     }
+
+    // Multi-character string packet (from PACKER)
+    if (content.length > 1) {
+      this.drawStringPacket(px, py, content, ctx.globalAlpha);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const code = content.charCodeAt(0);
+    const isMultibyte = code > 127;
+    const color = this.packetColor(code);
+    const size = PACKET_SIZE / 2;
 
     ctx.fillStyle = CLR_PACKET_BG;
     ctx.strokeStyle = color;
@@ -1025,7 +1352,7 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    let display = char;
+    let display = content;
     if (code < 32) {
       display = CTRL_NAMES[code];
       ctx.font = FONT_PACKET_TINY;
@@ -1135,7 +1462,8 @@ export class Renderer {
     lines.push(`${cwd} $ ${command}`);
 
     if (machine.stream) {
-      lines.push(`~~ ${machine.streamBytesWritten} bytes written`);
+      lines.push(`> ${formatBytes(machine.streamBytesWritten)} in`);
+      lines.push(`< ${formatBytes(machine.bytesRead)} out`);
     } else {
       const inputBuffer = machine.pendingInput || '';
       if (inputBuffer.length > 0) {
