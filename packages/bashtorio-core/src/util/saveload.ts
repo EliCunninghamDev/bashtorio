@@ -1,25 +1,44 @@
 import type { GameState } from '../game/state';
-import type { Cell, Machine, MathOp } from '../game/types';
+import type { Machine, MathOp } from '../game/types';
 import { CellType, MachineType, Direction } from '../game/types';
-import { getSplitterSecondary } from '../game/grid';
+import {
+  clearGrid,
+  forEachNonEmpty, getMachineIndex, getBeltDir,
+  setBelt, setMachineCell,
+} from '../game/grid';
+import { getSplitterSecondary } from '../game/edit';
+import { machines, getSinkIdCounter, setSinkIdCounter, clearMachines } from '../game/machines';
+import { emitGameEvent, onGameEvent } from '../events/bus';
+import { PRESETS } from './presets';
 
 /**
- * Serializable format for saved games
+ * Serializable format for saved games (v2: sparse cell list)
  */
 export interface SaveData {
   version: number;
-  gridCols: number;
-  gridRows: number;
-  grid: SerializedCell[][];
+  cells?: SerializedCellV2[];       // v2: sparse cell list
+  gridCols?: number;                 // v1 compat
+  gridRows?: number;                 // v1 compat
+  grid?: SerializedCellV1[][];       // v1 compat
   machines: SerializedMachine[];
   sourceText?: string;
   sinkIdCounter: number;
 }
 
-interface SerializedCell {
-  type: CellType;
+/** V1 cell format (dense 2D array) */
+interface SerializedCellV1 {
+  type: string | number;  // string in v1 saves, numeric in current CellType
   dir?: Direction;
-  machineIdx?: number; // Index into machines array
+  machineIdx?: number;
+}
+
+/** V2 cell format (sparse list) */
+interface SerializedCellV2 {
+  x: number;
+  y: number;
+  type: string;           // 'belt' | 'machine'
+  dir?: number;
+  machineIdx?: number;
 }
 
 interface SerializedMachine {
@@ -60,39 +79,32 @@ interface SerializedMachine {
   latchDataDir?: number;
   latchControlDir?: number;
   splitterDir?: number;
+  waveform?: string;
 }
 
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 /**
- * Serialize game state to JSON-compatible object
+ * Serialize game state to JSON-compatible object (v2 sparse format)
  */
-export function serializeState(state: GameState): SaveData {
+export function serializeState(): SaveData {
   // Create machine index map
   const machineMap = new Map<Machine, number>();
-  state.machines.forEach((m, idx) => machineMap.set(m, idx));
+  machines.forEach((m, idx) => machineMap.set(m, idx));
 
-  // Serialize grid
-  const grid: SerializedCell[][] = [];
-  for (let x = 0; x < state.gridCols; x++) {
-    grid[x] = [];
-    for (let y = 0; y < state.gridRows; y++) {
-      const cell = state.grid[x][y];
-      const serialized: SerializedCell = { type: cell.type };
-
-      if (cell.type === CellType.BELT) {
-        serialized.dir = (cell as { dir: Direction }).dir;
-      } else if (cell.type === CellType.MACHINE) {
-        const machine = (cell as { machine: Machine }).machine;
-        serialized.machineIdx = machineMap.get(machine);
-      }
-
-      grid[x][y] = serialized;
+  // Build sparse cell list
+  const cells: SerializedCellV2[] = [];
+  forEachNonEmpty((x, y, cellType) => {
+    if (cellType === CellType.BELT) {
+      cells.push({ x, y, type: 'belt', dir: getBeltDir(x, y) });
+    } else if (cellType === CellType.MACHINE) {
+      const mi = getMachineIndex(x, y);
+      cells.push({ x, y, type: 'machine', machineIdx: mi });
     }
-  }
+  });
 
   // Serialize machines
-  const machines: SerializedMachine[] = state.machines.map(m => {
+  const serializedMachines: SerializedMachine[] = machines.map(m => {
     const base: SerializedMachine = { x: m.x, y: m.y, type: m.type, command: '', autoStart: false, sinkId: 0 };
     switch (m.type) {
       case MachineType.SOURCE:
@@ -167,37 +179,47 @@ export function serializeState(state: GameState): SaveData {
         break;
       case MachineType.SEVENSEG:
         break;
+      case MachineType.DRUM:
+        break;
+      case MachineType.TONE:
+        base.waveform = m.waveform;
+        break;
     }
     return base;
   });
 
   return {
     version: SAVE_VERSION,
-    gridCols: state.gridCols,
-    gridRows: state.gridRows,
-    grid,
-    machines,
-    sinkIdCounter: state.sinkIdCounter,
+    cells,
+    machines: serializedMachines,
+    sinkIdCounter: getSinkIdCounter(),
   };
 }
 
+/** Map v1 string cell types to CellType enum values */
+function parseCellType(t: string | number): CellType {
+  if (typeof t === 'number') return t as CellType;
+  switch (t) {
+    case 'belt': return CellType.BELT;
+    case 'machine': return CellType.MACHINE;
+    default: return CellType.EMPTY;
+  }
+}
+
+export function clearState(state: GameState): void {
+  clearGrid();
+  clearMachines();
+  state.packets = [];
+  state.orphanedPackets = [];
+  emitGameEvent('selectPlaceable', { placeable: 'belt' });
+}
+
 /**
- * Deserialize saved data into game state
+ * Deserialize saved data into game state (v1 + v2 compat)
  */
 export function deserializeState(state: GameState, data: SaveData): void {
-  if (data.version !== SAVE_VERSION) {
-    console.warn(`Save version mismatch: expected ${SAVE_VERSION}, got ${data.version}`);
-  }
-
-  // Clear existing state
-  state.machines = [];
-  state.packets = [];
+  clearState(state);
   state.running = false;
-
-  // Restore grid dimensions
-  state.gridCols = data.gridCols;
-  state.gridRows = data.gridRows;
-  state.grid = [];
 
   // Restore machines first (we need them for grid references)
   for (const sm of data.machines) {
@@ -270,7 +292,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.FLIPPER,
           flipperDir: sm.flipperDir ?? 0,
           flipperState: sm.flipperDir ?? 0,
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.DUPLICATOR:
@@ -356,6 +378,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           ...base,
           type: MachineType.WIRELESS,
           wirelessChannel: sm.wirelessChannel ?? 0,
+          wifiArc: 0,
           outputBuffer: '',
         };
         break;
@@ -366,6 +389,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           replaceFrom: sm.replaceFrom ?? 'a',
           replaceTo: sm.replaceTo ?? 'b',
           outputBuffer: '',
+          lastActivation: 0,
+          animationProgress: 0,
         };
         break;
       case MachineType.MATH:
@@ -396,9 +421,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           outputBuffer: '',
         };
         break;
-      case MachineType.MERGER:
-        machine = { ...base, type: MachineType.MERGER, outputBuffer: '' };
-        break;
+
       case MachineType.SPLITTER:
         machine = {
           ...base,
@@ -411,61 +434,66 @@ export function deserializeState(state: GameState, data: SaveData): void {
       case MachineType.SEVENSEG:
         machine = { ...base, type: MachineType.SEVENSEG, lastByte: -1, outputBuffer: '' };
         break;
+      case MachineType.DRUM:
+        machine = { ...base, type: MachineType.DRUM, outputBuffer: '' };
+        break;
+      case MachineType.TONE:
+        machine = { ...base, type: MachineType.TONE, waveform: (sm.waveform ?? 'sine') as OscillatorType };
+        break;
       default:
         // Fallback for unknown types in old saves
         machine = { ...base, type: MachineType.NULL };
         break;
     }
-    state.machines.push(machine);
+    machines.push(machine);
   }
 
-  // Restore grid
-  for (let x = 0; x < data.gridCols; x++) {
-    state.grid[x] = [];
-    for (let y = 0; y < data.gridRows; y++) {
-      const sc = data.grid[x]?.[y];
-      if (!sc) {
-        state.grid[x][y] = { type: CellType.EMPTY };
-        continue;
+  // Restore grid: detect v1 (has `grid` 2D array) vs v2 (has `cells` list)
+  if (data.cells) {
+    // V2: sparse cell list
+    for (const sc of data.cells) {
+      if (sc.type === 'belt') {
+        setBelt(sc.x, sc.y, sc.dir ?? Direction.RIGHT);
+      } else if (sc.type === 'machine') {
+        setMachineCell(sc.x, sc.y, sc.machineIdx ?? 0);
       }
-
-      let cell: Cell;
-      switch (sc.type) {
-        case CellType.BELT:
-          cell = { type: CellType.BELT, dir: sc.dir ?? Direction.RIGHT };
-          break;
-        case CellType.MACHINE: {
-          const machine = state.machines[sc.machineIdx ?? 0];
-          cell = { type: CellType.MACHINE, machine };
-          break;
+    }
+  } else if (data.grid) {
+    // V1: dense 2D array (backward compat)
+    const cols = data.gridCols ?? data.grid.length;
+    const rows = data.gridRows ?? (data.grid[0]?.length ?? 0);
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < rows; y++) {
+        const sc = data.grid[x]?.[y];
+        if (!sc) continue;
+        const ct = parseCellType(sc.type);
+        if (ct === CellType.BELT) {
+          setBelt(x, y, sc.dir ?? Direction.RIGHT);
+        } else if (ct === CellType.MACHINE) {
+          setMachineCell(x, y, sc.machineIdx ?? 0);
         }
-        default:
-          // Handles CellType.EMPTY and legacy CellType.SPLITTER (now a machine)
-          cell = { type: CellType.EMPTY };
       }
-      state.grid[x][y] = cell;
     }
   }
 
   // Post-load fixup: ensure splitter secondary cells are set
-  for (const machine of state.machines) {
+  for (let i = 0; i < machines.length; i++) {
+    const machine = machines[i];
     if (machine.type === MachineType.SPLITTER) {
       const sec = getSplitterSecondary(machine);
-      if (sec.x >= 0 && sec.x < state.gridCols && sec.y >= 0 && sec.y < state.gridRows) {
-        state.grid[sec.x][sec.y] = { type: CellType.MACHINE, machine };
-      }
+      setMachineCell(sec.x, sec.y, i);
     }
   }
 
   // Restore other state
-  state.sinkIdCounter = data.sinkIdCounter ?? 1;
+  setSinkIdCounter(data.sinkIdCounter ?? 1);
 }
 
 /**
  * Download save data as JSON file
  */
-export function downloadSave(state: GameState, filename = 'bashtorio-save.json'): void {
-  const data = serializeState(state);
+export function downloadSave(filename = 'bashtorio-save.json'): void {
+  const data = serializeState();
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -478,9 +506,6 @@ export function downloadSave(state: GameState, filename = 'bashtorio-save.json')
   URL.revokeObjectURL(url);
 }
 
-/**
- * Load save data from JSON file (returns Promise)
- */
 /**
  * Compress a Uint8Array using deflate-raw via CompressionStream.
  */
@@ -534,8 +559,8 @@ async function decompress(input: Uint8Array): Promise<Uint8Array> {
 /**
  * Encode save data as a compressed, base64url string (URL-safe, no padding).
  */
-export async function saveToBase64(state: GameState): Promise<string> {
-	const data = serializeState(state);
+export async function saveToBase64(): Promise<string> {
+	const data = serializeState();
 	const json = JSON.stringify(data);
 	const encoded = new TextEncoder().encode(json);
 	const compressed = await compress(encoded);
@@ -606,5 +631,60 @@ export function uploadSave(): Promise<SaveData> {
     };
 
     input.click();
+  });
+}
+
+export function setupSaveLoadHandlers(
+  state: GameState,
+): void {
+  onGameEvent('clearAll', () => clearState(state));
+
+  onGameEvent('requestSave', () => downloadSave());
+
+  onGameEvent('requestLoad', async () => {
+    try {
+      const data = await uploadSave();
+      deserializeState(state, data);
+      emitGameEvent('saveLoaded', { source: 'file' });
+    } catch (e) {
+      console.error('Failed to load save:', e);
+      alert('Failed to load save file: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  });
+
+  onGameEvent('requestLoadURL', async () => {
+    const data = await loadFromURLParam();
+    if (data) {
+      deserializeState(state, data);
+      emitGameEvent('saveLoaded', { source: 'url' });
+    }
+  });
+
+  onGameEvent('requestCopyLink', async () => {
+    const base64 = await saveToBase64();
+    const url = new URL(window.location.href);
+    url.searchParams.set('factory', base64);
+    navigator.clipboard.writeText(url.toString()).then(
+      () => emitGameEvent('toast', { message: 'Factory link copied to clipboard' }),
+      () => emitGameEvent('toast', { message: 'Failed to copy link' }),
+    );
+  });
+
+  onGameEvent('saveLoaded', ({ source }) => {
+    if (state.running) state.running = false;
+    const messages: Record<string, string> = {
+      url: 'Loaded save from URL',
+      file: 'Loaded save from file',
+      preset: 'Loaded preset',
+    };
+    const msg = messages[source];
+    if (msg) emitGameEvent('toast', { message: msg });
+  });
+
+  onGameEvent('loadPresetByName', ({ id }) => {
+    const preset = PRESETS.find(p => p.id === id);
+    if (!preset) return;
+    deserializeState(state, preset.data);
+    emitGameEvent('saveLoaded', { source: 'preset' });
   });
 }

@@ -504,6 +504,13 @@
     "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/nlcst"
   },
   {
+    "name": "@types/trusted-types",
+    "version": "2.0.7",
+    "license": "MIT",
+    "author": "",
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types"
+  },
+  {
     "name": "@types/unist",
     "version": "3.0.3",
     "license": "MIT",
@@ -1454,6 +1461,13 @@
     "license": "MIT",
     "author": "Marvin Hagemeister <hello@marvinh.dev>",
     "url": "https://github.com/marvinhagemeister/kolorist"
+  },
+  {
+    "name": "lit-html",
+    "version": "3.3.2",
+    "license": "BSD-3-Clause",
+    "author": "Google LLC",
+    "url": "https://lit.dev/"
   },
   {
     "name": "load-yaml-file",
@@ -2539,6 +2553,13 @@
     "license": "BSD-2-Clause",
     "author": "",
     "url": "https://copy.sh/v86/"
+  },
+  {
+    "name": "vanjs-core",
+    "version": "1.6.0",
+    "license": "MIT",
+    "author": "Tao Xin",
+    "url": "https://vanjs.org"
   },
   {
     "name": "vfile",

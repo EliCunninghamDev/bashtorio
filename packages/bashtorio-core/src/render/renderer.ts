@@ -1,6 +1,6 @@
+import { formatBytes } from '../util/format';
+import { type RGB, rgb, lerpRgb, rgbCSS } from '../util/colors';
 import {
-  GRID_COLS,
-  GRID_ROWS,
   GRID_SIZE,
   PACKET_SIZE,
   Direction,
@@ -17,16 +17,31 @@ import {
   type MathMachine,
   type WirelessMachine,
   type Packet,
-  type BeltCell,
   type SplitterMachine,
   type SevenSegMachine,
+  type ClockMachine,
+  type GateMachine,
+  type LatchMachine,
+  type FlipperMachine,
+  type DelayMachine,
+  type FilterMachine,
+  type LinefeedMachine,
+  type ConstantMachine,
+  type DuplicatorMachine,
+  type KeyboardMachine,
+  type UnpackerMachine,
+  type ToneMachine,
+  type BeltCell,
   type CursorMode,
-  type Camera,
   type OrphanedPacket,
 } from '../game/types';
 import type { ColorTheme, MachineColor } from '../util/themes';
 import type { GameState } from '../game/state';
-import { initGrid, getSplitterSecondary } from '../game/grid';
+import { getCell, forEachBelt } from '../game/grid';
+import { getSplitterSecondary } from '../game/edit';
+import { machines } from '../game/machines';
+import * as cam from '../game/camera';
+import { now } from '../game/clock';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -54,6 +69,24 @@ const DOT_Y_INSET = 9;
 const FLASH_DURATION_MS = 300;
 
 const LABEL_MAX_WIDTH = GRID_SIZE - 10;
+
+const TAU = Math.PI * 2;
+const HALF_PI = Math.PI / 2;
+
+const WIFI_ARC_RADII = [7, 13, 19] as const;
+const WIFI_ARC_START = -Math.PI * 0.75;
+const WIFI_ARC_END = -Math.PI * 0.25;
+
+const OUTPUT_DIRS = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP] as const;
+const OUTPUT_DX = [1, 0, -1, 0] as const;
+const OUTPUT_DY = [0, 1, 0, -1] as const;
+
+const SEVENSEG_BITMASK: Record<string, number> = {
+  '0': 0x3F, '1': 0x06, '2': 0x5B, '3': 0x4F,
+  '4': 0x66, '5': 0x6D, '6': 0x7D, '7': 0x07,
+  '8': 0x7F, '9': 0x6F, 'A': 0x77, 'B': 0x7C,
+  'C': 0x39, 'D': 0x5E, 'E': 0x79, 'F': 0x71,
+};
 
 const PACKET_CORNER_RADIUS = 4;
 
@@ -151,15 +184,28 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.UNPACKER]:   { bg: '#4a2a3a', border: '#8a4a6a', text: '#ccc' },
   [MachineType.ROUTER]:     { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
   [MachineType.GATE]:       { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
-  [MachineType.WIRELESS]:   { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
+  [MachineType.WIRELESS]:   { bg: '#000000', border: '#ffffff', text: '#ccc' },
   [MachineType.REPLACE]:    { bg: '#5a5a2a', border: '#8a8a4a', text: '#ccc' },
   [MachineType.MATH]:       { bg: '#2a5a2a', border: '#4a8a4a', text: '#ccc' },
   [MachineType.CLOCK]:      { bg: '#5a2a4a', border: '#8a4a7a', text: '#ccc' },
   [MachineType.LATCH]:      { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
-  [MachineType.MERGER]:     { bg: '#3a2a4a', border: '#6a4a8a', text: '#ccc' },
+
   [MachineType.SPLITTER]:   { bg: '#3a2a4a', border: '#8a6aaa', text: '#ccc' },
   [MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
+  [MachineType.DRUM]:       { bg: '#4a3a2a', border: '#aa7744', text: '#ffcc66' },
+  [MachineType.TONE]:       { bg: '#3a2a5a', border: '#7a4aaa', text: '#cc99ff' },
 };
+
+const WIRELESS_CHANNEL_COLORS = [
+  '#ff4444', '#ff8800', '#ffcc00', '#44cc44',
+  '#44cccc', '#4488ff', '#aa44ff', '#ff44aa',
+];
+
+const WIFI_DIM: RGB = rgb(0x1a, 0x1a, 0x1a);
+const WIRELESS_CHANNEL_PACKED: RGB[] = [
+  0xff4444, 0xff8800, 0xffcc00, 0x44cc44,
+  0x44cccc, 0x4488ff, 0xaa44ff, 0xff44aa,
+];
 
 // ---------------------------------------------------------------------------
 // Control-character name table (allocated once)
@@ -228,18 +274,12 @@ function cy(row: number): number { return row * GRID_SIZE + HALF_GRID; }
 /** Linear interpolation. */
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
-/** Format a byte count as a human-readable string (B, KB, MB, GB). */
-function formatBytes(n: number): string {
-	if (n < 1024) return `${n} B`;
-	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-	if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-	return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
 
 /** Clamp n into [lo, hi]. */
 function clamp(n: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
 }
+
 
 // ---------------------------------------------------------------------------
 // Renderer
@@ -252,15 +292,12 @@ export interface RendererConfig {
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private animationTime = 0;
   private hoveredMachine: Machine | null = null;
+  private timescale = 1;
   /** Mouse position in world pixels (already inverse-camera-transformed). */
   private mouseX = 0;
   private mouseY = 0;
   private mouseOnCanvas = false;
-  private camera: Camera = { x: 0, y: 0, scale: 1 };
-  /** fitScale * camera.scale - maps world pixels to screen pixels. */
-  private effectiveScale = 1;
   hoverCol = -1;
   hoverRow = -1;
 
@@ -276,8 +313,8 @@ export class Renderer {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       // Screen → world using effective scale
-      this.mouseX = screenX / this.effectiveScale + this.camera.x;
-      this.mouseY = screenY / this.effectiveScale + this.camera.y;
+      this.mouseX = screenX / cam.getScale() + cam.getX();
+      this.mouseY = screenY / cam.getScale() + cam.getY();
       this.mouseOnCanvas = true;
     });
 
@@ -305,39 +342,22 @@ export class Renderer {
     }
   }
 
-  handleResize(state?: GameState): void {
+  handleResize(_state?: GameState): void {
     // Reset backing buffer so intrinsic size doesn't prevent the
     // grid cell (and thus clientWidth/Height) from shrinking.
     this.canvas.width = 0;
     this.canvas.height = 0;
     this.canvas.width = this.canvas.clientWidth;
     this.canvas.height = this.canvas.clientHeight;
-
-    if (state && (state.gridCols !== GRID_COLS || state.gridRows !== GRID_ROWS)) {
-      const oldGrid = state.grid;
-      const oldCols = state.gridCols;
-      const oldRows = state.gridRows;
-
-      initGrid(state, GRID_COLS, GRID_ROWS);
-
-      for (let x = 0; x < Math.min(GRID_COLS, oldCols); x++) {
-        for (let y = 0; y < Math.min(GRID_ROWS, oldRows); y++) {
-          if (oldGrid[x] && oldGrid[x][y]) {
-            state.grid[x][y] = oldGrid[x][y];
-          }
-        }
-      }
-    }
+    cam.updateCanvasSize(this.canvas.width, this.canvas.height);
   }
 
-  render(state: GameState, time: number): void {
-    this.animationTime = time;
+  render(state: GameState): void {
+    this.timescale = state.timescale;
     const ctx = this.ctx;
-    const { gridCols, gridRows } = state;
-    const cam = state.camera;
-    this.camera = cam;
 
-    this.effectiveScale = cam.scale;
+    // Sync canvas size into camera module
+    cam.updateCanvasSize(this.canvas.width, this.canvas.height);
 
     // Clear entire canvas (in screen space, before camera transform)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -345,40 +365,34 @@ export class Renderer {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     // Apply camera transform: world → screen
-    const s = cam.scale;
-    ctx.setTransform(s, 0, 0, s, -cam.x * s, -cam.y * s);
+    const s = cam.getScale();
+    ctx.setTransform(s, 0, 0, s, -cam.getX() * s, -cam.getY() * s);
 
-    // Grid lines
+    // Viewport-based grid lines
+    const { startCol, endCol, startRow, endRow } = cam.visibleGridRange();
+
     ctx.strokeStyle = CLR_GRID_LINE;
     ctx.lineWidth = 1;
-
-    for (let x = 0; x <= gridCols; x++) {
+    ctx.beginPath();
+    for (let x = startCol; x <= endCol; x++) {
       const px = gx(x);
-      ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, gy(gridRows));
-      ctx.stroke();
+      ctx.moveTo(px, gy(startRow));
+      ctx.lineTo(px, gy(endRow));
     }
-    for (let y = 0; y <= gridRows; y++) {
+    for (let y = startRow; y <= endRow; y++) {
       const py = gy(y);
-      ctx.beginPath();
-      ctx.moveTo(0, py);
-      ctx.lineTo(gx(gridCols), py);
-      ctx.stroke();
+      ctx.moveTo(gx(startCol), py);
+      ctx.lineTo(gx(endCol), py);
     }
+    ctx.stroke();
 
-    // Cells
-    for (let x = 0; x < gridCols; x++) {
-      for (let y = 0; y < gridRows; y++) {
-        const cell = state.grid[x][y];
-        if (cell.type === CellType.BELT) {
-          this.drawBelt(x, y, (cell as BeltCell).dir, state.running);
-        }
-      }
-    }
+    // Belts (sparse iteration)
+    forEachBelt((x, y, dir) => {
+      this.drawBelt(x, y, dir, state.running);
+    });
 
     // Machines
-    for (const machine of state.machines) {
+    for (const machine of machines) {
       this.drawMachine(machine);
     }
 
@@ -393,7 +407,7 @@ export class Renderer {
     }
 
     // Speech bubbles
-    for (const machine of state.machines) {
+    for (const machine of machines) {
       if (machine.type === MachineType.DISPLAY && machine.displayText) {
         this.drawSpeechBubble(machine);
       }
@@ -406,7 +420,7 @@ export class Renderer {
     this.hoverRow = this.mouseOnCanvas ? hoverRow : -1;
     this.hoveredMachine = null;
 
-    for (const machine of state.machines) {
+    for (const machine of machines) {
       if (machine.x === hoverCol && machine.y === hoverRow) {
         this.hoveredMachine = machine;
         break;
@@ -432,7 +446,7 @@ export class Renderer {
     }
 
     // Cursor coordinates label
-    if (this.mouseOnCanvas && hoverCol >= 0 && hoverCol < state.gridCols && hoverRow >= 0 && hoverRow < state.gridRows) {
+    if (this.mouseOnCanvas) {
       this.drawCursorCoords(state, hoverCol, hoverRow);
     }
 
@@ -445,10 +459,8 @@ export class Renderer {
   // -------------------------------------------------------------------------
 
   private drawPlacementPreview(state: GameState, col: number, row: number): void {
-    if (col < 0 || col >= state.gridCols || row < 0 || row >= state.gridRows) return;
-
-    const cell = state.grid[col]?.[row];
-    if (cell && cell.type === CellType.MACHINE) return;
+    const cell = getCell(col, row);
+    if (cell.type === CellType.MACHINE) return;
 
     const ctx = this.ctx;
     ctx.globalAlpha = 0.5;
@@ -459,11 +471,9 @@ export class Renderer {
         break;
       case 'splitter': {
         const sec = getSplitterSecondary({ dir: state.currentDir, x: col, y: row });
-        if (sec.x >= 0 && sec.x < state.gridCols && sec.y >= 0 && sec.y < state.gridRows) {
-          const sec_cell = state.grid[sec.x]?.[sec.y];
-          if (!sec_cell || sec_cell.type === CellType.MACHINE) break;
-          this.drawSplitterMachine({ x: col, y: row, dir: state.currentDir } as SplitterMachine);
-        }
+        const secCell = getCell(sec.x, sec.y);
+        if (secCell.type === CellType.MACHINE) break;
+        this.drawSplitterMachine({ x: col, y: row, dir: state.currentDir } as SplitterMachine);
         break;
       }
       case 'source':
@@ -521,7 +531,7 @@ export class Renderer {
         this.drawMachineBox(col, row, MachineType.GATE, 'GATE');
         break;
       case 'wireless':
-        this.drawMachineBox(col, row, MachineType.WIRELESS, 'W0');
+        this.drawWirelessPreview(col, row);
         break;
       case 'replace':
         this.drawMachineBox(col, row, MachineType.REPLACE, 'RPL');
@@ -535,11 +545,15 @@ export class Renderer {
       case 'latch':
         this.drawMachineBox(col, row, MachineType.LATCH, 'LAT');
         break;
-      case 'merger':
-        this.drawMachineBox(col, row, MachineType.MERGER, 'MRG');
-        break;
+
       case 'sevenseg':
         this.drawMachineBox(col, row, MachineType.SEVENSEG, '7SEG');
+        break;
+      case 'drum':
+        this.drawMachineBox(col, row, MachineType.DRUM, 'DRUM');
+        break;
+      case 'tone':
+        this.drawMachineBox(col, row, MachineType.TONE, 'SIN');
         break;
     }
 
@@ -647,7 +661,7 @@ export class Renderer {
     const centerX = cx(col);
     const centerY = cy(row);
     const spacing = GRID_SIZE / 3;
-    const anim = running ? ((this.animationTime / BELT_ANIM_PERIOD) % 1) * spacing : 0;
+    const anim = running ? ((now / BELT_ANIM_PERIOD) % 1) * spacing : 0;
 
     ctx.strokeStyle = CLR_BELT_ARROW;
     ctx.lineWidth = 2;
@@ -773,6 +787,81 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Wireless (wifi symbol)
+  // -------------------------------------------------------------------------
+
+  private drawWireless(machine: WirelessMachine): void {
+    const px = gx(machine.x);
+    const py = gy(machine.y);
+    const ctx = this.ctx;
+    const color = MACHINE_COLORS[MachineType.WIRELESS];
+
+    // Black background + white frame
+    ctx.fillStyle = color.bg;
+    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    ctx.strokeStyle = color.border;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+
+    const chPacked = WIRELESS_CHANNEL_PACKED[machine.wirelessChannel];
+    const litArcs = machine.wifiArc;
+    const fade = clamp(1 - (now - machine.lastCommandTime) / 1000, 0, 1);
+    const litColor = rgbCSS(lerpRgb(WIFI_DIM, chPacked, fade));
+    const dimColor = rgbCSS(WIFI_DIM);
+
+    const mcx = cx(machine.x);
+    const dotY = cy(machine.y) + 8;
+
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = i < litArcs ? litColor : dimColor;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(mcx, dotY, WIFI_ARC_RADII[i], WIFI_ARC_START, WIFI_ARC_END);
+      ctx.stroke();
+    }
+
+    // Center dot (always channel color)
+    ctx.fillStyle = WIRELESS_CHANNEL_COLORS[machine.wirelessChannel];
+    ctx.beginPath();
+    ctx.arc(mcx, dotY, 2.5, 0, TAU);
+    ctx.fill();
+  }
+
+  private drawWirelessPreview(col: number, row: number): void {
+    const px = gx(col);
+    const py = gy(row);
+    const ctx = this.ctx;
+    const color = MACHINE_COLORS[MachineType.WIRELESS];
+
+    ctx.fillStyle = color.bg;
+    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    ctx.strokeStyle = color.border;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+
+    const mcx = cx(col);
+    const dotY = cy(row) + 8;
+    const dimColor = rgbCSS(WIFI_DIM);
+
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = dimColor;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(mcx, dotY, WIFI_ARC_RADII[i], WIFI_ARC_START, WIFI_ARC_END);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = WIRELESS_CHANNEL_COLORS[0];
+    ctx.beginPath();
+    ctx.arc(mcx, dotY, 2.5, 0, TAU);
+    ctx.fill();
+  }
+
+  // -------------------------------------------------------------------------
   // Seven-segment display
   // -------------------------------------------------------------------------
 
@@ -788,23 +877,11 @@ export class Renderer {
     ctx.lineWidth = 2;
     ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
 
-    // Segment map: standard 7-seg a-g, bitmask per hex digit
-    //   a=0x01 (top), b=0x02 (top-right), c=0x04 (bottom-right),
-    //   d=0x08 (bottom), e=0x10 (bottom-left), f=0x20 (top-left), g=0x40 (middle)
-    const SEGS: Record<string, number> = {
-      '0': 0x3F, '1': 0x06, '2': 0x5B, '3': 0x4F,
-      '4': 0x66, '5': 0x6D, '6': 0x7D, '7': 0x07,
-      '8': 0x7F, '9': 0x6F, 'A': 0x77, 'B': 0x7C,
-      'C': 0x39, 'D': 0x5E, 'E': 0x79, 'F': 0x71,
-    };
-
-    // Map lastByte to hex digit
+    // Map lastByte to 7-seg bitmask via low nibble
     let mask = 0;
     if (machine.lastByte >= 0) {
-      const hexStr = machine.lastByte.toString(16).toUpperCase();
-      // Show last hex digit
-      const digit = hexStr[hexStr.length - 1];
-      mask = SEGS[digit] ?? 0;
+      const digit = '0123456789ABCDEF'[machine.lastByte & 0xF];
+      mask = SEVENSEG_BITMASK[digit] ?? 0;
     }
 
     // Segment geometry scaled to cell interior
@@ -845,6 +922,79 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Clock face (clock machines)
+  // -------------------------------------------------------------------------
+
+  private drawClockFace(machine: ClockMachine): void {
+    const ctx = this.ctx;
+    const mcx = cx(machine.x);
+    const mcy = cy(machine.y);
+    const color = MACHINE_COLORS[MachineType.CLOCK];
+    const r = CELL_INNER / 2 - 2;
+    const start = -HALF_PI; // 12 o'clock
+
+    // Progress arc
+    const adjustedDelay = machine.emitInterval / this.timescale;
+    const elapsed = now - machine.lastEmitTime;
+    const progress = adjustedDelay > 0 ? clamp(elapsed / adjustedDelay, 0, 1) : 0;
+
+    ctx.strokeStyle = color.border;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(mcx, mcy, r, start, start + progress * TAU);
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = color.text;
+    ctx.font = FONT_LABEL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CLK', mcx, mcy);
+  }
+
+  // -------------------------------------------------------------------------
+  // Tone waveform (animated oscilloscope)
+  // -------------------------------------------------------------------------
+
+  private drawToneWaveform(machine: ToneMachine): void {
+    const ctx = this.ctx;
+    const mcx = cx(machine.x);
+    const mcy = cy(machine.y);
+    const color = MACHINE_COLORS[MachineType.TONE];
+
+    const waveW = 30;
+    const amp = 7;
+    const samples = 24;
+    const cycles = 2;
+    const active = now - machine.lastCommandTime < 2000;
+    const phase = active ? now * 0.008 : 0;
+    const startX = mcx - waveW / 2;
+
+    ctx.beginPath();
+    ctx.strokeStyle = active ? color.text : color.border;
+    ctx.lineWidth = active ? 2 : 1.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i <= samples; i++) {
+      const t = (i / samples) * cycles * TAU + phase;
+      let v: number;
+      switch (machine.waveform) {
+        case 'square':   v = Math.sin(t) >= 0 ? 1 : -1; break;
+        case 'sawtooth':  v = 2 * ((t / TAU) - Math.floor(t / TAU + 0.5)); break;
+        case 'triangle': v = (2 / Math.PI) * Math.asin(Math.sin(t)); break;
+        default:          v = Math.sin(t); break;
+      }
+      const sx = startX + (i / samples) * waveW;
+      const sy = mcy - v * amp;
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+  }
+
+  // -------------------------------------------------------------------------
   // Machine (full, with indicators)
   // -------------------------------------------------------------------------
 
@@ -858,6 +1008,12 @@ export class Renderer {
     // Seven-segment display: custom rendering
     if (machine.type === MachineType.SEVENSEG) {
       this.drawSevenSeg(machine as SevenSegMachine);
+      return;
+    }
+
+    // Wireless: custom wifi symbol rendering
+    if (machine.type === MachineType.WIRELESS) {
+      this.drawWireless(machine as WirelessMachine);
       return;
     }
 
@@ -891,8 +1047,14 @@ export class Renderer {
       this.drawMiniPacket(cx(machine.x), cy(machine.y), (machine as RouterMachine).routerByte);
     } else if (machine.type === MachineType.REPLACE) {
       const rm = machine as ReplaceMachine;
-      this.drawMiniPacket(cx(machine.x) - 8, cy(machine.y), rm.replaceFrom);
-      this.drawMiniPacket(cx(machine.x) + 8, cy(machine.y), rm.replaceTo);
+      const elapsed = now - rm.lastActivation;
+      rm.animationProgress = rm.lastActivation > 0 && elapsed > 0 ? 1 - Math.exp(-elapsed / 300) : 1;
+      const angle = rm.animationProgress * TAU;
+      const r = 10;
+      const mcx = cx(machine.x);
+      const mcy = cy(machine.y);
+      this.drawMiniPacket(mcx + Math.cos(angle) * r, mcy + Math.sin(angle) * r, rm.replaceFrom);
+      this.drawMiniPacket(mcx + Math.cos(angle + Math.PI) * r, mcy + Math.sin(angle + Math.PI) * r, rm.replaceTo);
     } else if (machine.type === MachineType.COUNTER) {
       this.drawMiniPacket(cx(machine.x), cy(machine.y) - 6, machine.counterTrigger);
       ctx.fillStyle = color.text;
@@ -900,6 +1062,10 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(machine.counterCount), cx(machine.x), cy(machine.y) + 10);
+    } else if (machine.type === MachineType.CLOCK) {
+      this.drawClockFace(machine);
+    } else if (machine.type === MachineType.TONE) {
+      this.drawToneWaveform(machine);
     } else {
       let label: string;
       switch (machine.type) {
@@ -921,16 +1087,15 @@ export class Renderer {
         case MachineType.PACKER:     label = 'PACK'; break;
         case MachineType.UNPACKER:   label = 'UNPK'; break;
         case MachineType.GATE:       label = 'GATE'; break;
-        case MachineType.WIRELESS:   label = 'W' + (machine as WirelessMachine).wirelessChannel; break;
         case MachineType.MATH: {
           const mm = machine as MathMachine;
           const opSyms: Record<string, string> = { add: '+', sub: '-', mul: '*', mod: '%', xor: '^', and: '&', or: '|', not: '~' };
           label = (opSyms[mm.mathOp] || mm.mathOp) + mm.mathOperand;
           break;
         }
-        case MachineType.CLOCK:      label = 'CLK';  break;
         case MachineType.LATCH:      label = 'LAT';  break;
-        case MachineType.MERGER:     label = 'MRG';  break;
+        case MachineType.DRUM:       label = 'DRUM'; break;
+
       }
 
       // Flash effect for command/packer machines: white → green over FLASH_DURATION_MS
@@ -940,7 +1105,7 @@ export class Renderer {
           ? machine.lastCommandTime
           : 0;
       if ((machine.type === MachineType.COMMAND || machine.type === MachineType.PACKER) && flashTime > 0) {
-        const elapsed = performance.now() - flashTime;
+        const elapsed = now - flashTime;
         if (elapsed < FLASH_DURATION_MS) {
           const t = elapsed / FLASH_DURATION_MS;
           const r = Math.round(lerp(255, FLASH_R, t));
@@ -983,9 +1148,16 @@ export class Renderer {
       this.drawPackerDots(px, py, machine);
     }
 
-    // Direction arrow for flipper machines
+    // Direction arrow for command machines (show output belt direction)
+    if (machine.type === MachineType.COMMAND) {
+      const outDir = this.findOutputDir(machine.x, machine.y);
+      if (outDir !== null) this.drawDirectionArrow(machine.x, machine.y, outDir);
+    }
+
+    // Direction arrow for flipper machines + queue depth dots
     if (machine.type === MachineType.FLIPPER) {
       this.drawDirectionArrow(machine.x, machine.y, machine.flipperState as Direction);
+      this.drawGenericBufferDots(px, py, (machine as FlipperMachine).outputQueue.length);
     }
 
     // Direction arrow for packer machines
@@ -997,6 +1169,89 @@ export class Renderer {
     if (machine.type === MachineType.ROUTER) {
       this.drawDirectionArrow(machine.x, machine.y, (machine as RouterMachine).routerMatchDir);
       this.drawDirectionArrow(machine.x, machine.y, (machine as RouterMachine).routerElseDir);
+    }
+
+    // Source: output direction arrow
+    if (machine.type === MachineType.SOURCE) {
+      const outDir = this.findOutputDir(machine.x, machine.y);
+      if (outDir !== null) this.drawDirectionArrow(machine.x, machine.y, outDir);
+    }
+
+    // Duplicator: buffer dots
+    if (machine.type === MachineType.DUPLICATOR) {
+      this.drawGenericBufferDots(px, py, (machine as DuplicatorMachine).outputBuffer.length);
+    }
+
+    // Delay: queue depth dots (delayQueue + outputBuffer)
+    if (machine.type === MachineType.DELAY) {
+      const dm = machine as DelayMachine;
+      this.drawGenericBufferDots(px, py, dm.delayQueue.length + dm.outputBuffer.length);
+    }
+
+    // Keyboard: buffer dots
+    if (machine.type === MachineType.KEYBOARD) {
+      this.drawGenericBufferDots(px, py, (machine as KeyboardMachine).outputBuffer.length);
+    }
+
+    // Unpacker: buffer dots
+    if (machine.type === MachineType.UNPACKER) {
+      this.drawGenericBufferDots(px, py, (machine as UnpackerMachine).outputBuffer.length);
+    }
+
+    // Filter: red strikethrough when in block mode
+    if (machine.type === MachineType.FILTER && (machine as FilterMachine).filterMode === 'block') {
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const mcx = cx(machine.x);
+      const mcy = cy(machine.y);
+      ctx.moveTo(mcx - 8, mcy - 8);
+      ctx.lineTo(mcx + 8, mcy + 8);
+      ctx.stroke();
+    }
+
+    // Gate: input arrows, state dot, output arrow, buffer dots
+    if (machine.type === MachineType.GATE) {
+      const gm = machine as GateMachine;
+      this.drawInputArrow(machine.x, machine.y, gm.gateDataDir, CLR_INPUT_AMBER);
+      this.drawInputArrow(machine.x, machine.y, gm.gateControlDir, '#4a9a9a');
+      // State dot (green=open, red=closed)
+      ctx.fillStyle = gm.gateOpen ? '#33ff33' : '#ff3333';
+      ctx.beginPath();
+      ctx.arc(px + GRID_SIZE - CELL_INSET - 5, py + CELL_INSET + 5, 3, 0, TAU);
+      ctx.fill();
+      // Output arrow
+      const gateOutDir = this.findOutputDir(machine.x, machine.y);
+      if (gateOutDir !== null) this.drawDirectionArrow(machine.x, machine.y, gateOutDir);
+      this.drawGenericBufferDots(px, py, gm.outputBuffer.length);
+    }
+
+    // Latch: input arrows, stored dot, output arrow, buffer dots
+    if (machine.type === MachineType.LATCH) {
+      const lm = machine as LatchMachine;
+      this.drawInputArrow(machine.x, machine.y, lm.latchDataDir, CLR_INPUT_AMBER);
+      this.drawInputArrow(machine.x, machine.y, lm.latchControlDir, '#4a9a9a');
+      // Stored dot (amber=has value, gray=empty)
+      ctx.fillStyle = lm.latchStored ? CLR_INPUT_AMBER : CLR_DOT_EMPTY;
+      ctx.beginPath();
+      ctx.arc(px + GRID_SIZE - CELL_INSET - 5, py + CELL_INSET + 5, 3, 0, TAU);
+      ctx.fill();
+      // Output arrow
+      const latchOutDir = this.findOutputDir(machine.x, machine.y);
+      if (latchOutDir !== null) this.drawDirectionArrow(machine.x, machine.y, latchOutDir);
+      this.drawGenericBufferDots(px, py, lm.outputBuffer.length);
+    }
+
+    // Linefeed: timer progress arc
+    if (machine.type === MachineType.LINEFEED) {
+      const lfm = machine as LinefeedMachine;
+      this.drawTimerArc(machine.x, machine.y, lfm.emitInterval, lfm.lastEmitTime, MACHINE_COLORS[MachineType.LINEFEED].border);
+    }
+
+    // Constant: timer progress arc
+    if (machine.type === MachineType.CONSTANT) {
+      const cm = machine as ConstantMachine;
+      this.drawTimerArc(machine.x, machine.y, cm.emitInterval, cm.lastEmitTime, MACHINE_COLORS[MachineType.CONSTANT].border);
     }
   }
 
@@ -1015,7 +1270,7 @@ export class Renderer {
     const botY = py + GRID_SIZE - DOT_Y_INSET;
     for (let i = 0; i < DOT_COUNT; i++) {
       ctx.beginPath();
-      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, Math.PI * 2);
+      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, TAU);
       if (i < inputFilled) {
         ctx.fillStyle = CLR_INPUT_AMBER;
         ctx.fill();
@@ -1041,7 +1296,7 @@ export class Renderer {
     const botY = py + GRID_SIZE - DOT_Y_INSET;
     for (let i = 0; i < DOT_COUNT; i++) {
       ctx.beginPath();
-      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, Math.PI * 2);
+      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, TAU);
       if (i < filled) {
         ctx.fillStyle = CLR_INPUT_AMBER;
         ctx.fill();
@@ -1059,7 +1314,6 @@ export class Renderer {
 
   private drawStreamIndicator(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
-    const now = performance.now();
     const ANIM_DURATION = 300;
     const BOUNCE_PX = 3;
 
@@ -1068,7 +1322,7 @@ export class Renderer {
     let offsetY = 0;
     if (machine.lastStreamWriteTime > 0 && elapsed < ANIM_DURATION) {
       const t = elapsed / ANIM_DURATION;
-      offsetY = Math.sin(t * Math.PI * 2) * BOUNCE_PX;
+      offsetY = Math.sin(t * TAU) * BOUNCE_PX;
     }
 
     const centerX = px + HALF_GRID;
@@ -1079,6 +1333,106 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = machine.activeJobId ? CLR_INPUT_AMBER : CLR_DOT_EMPTY;
     ctx.fillText('~~', centerX, botY);
+  }
+
+  // -------------------------------------------------------------------------
+  // Generic buffer dots (reusable for any machine with a buffer)
+  // -------------------------------------------------------------------------
+
+  private drawGenericBufferDots(px: number, py: number, bufferLength: number): void {
+    const ctx = this.ctx;
+    const totalWidth = (DOT_COUNT - 1) * DOT_SPACING;
+    const startX = px + HALF_GRID - totalWidth / 2;
+    const filled = bufferLength % DOT_MOD;
+    const botY = py + GRID_SIZE - DOT_Y_INSET;
+
+    for (let i = 0; i < DOT_COUNT; i++) {
+      ctx.beginPath();
+      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, TAU);
+      if (i < filled) {
+        ctx.fillStyle = CLR_INPUT_AMBER;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = CLR_DOT_EMPTY;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Input arrow (pointing inward toward cell center)
+  // -------------------------------------------------------------------------
+
+  private drawInputArrow(col: number, row: number, fromDir: Direction, color: string): void {
+    const ctx = this.ctx;
+    const px = gx(col);
+    const py = gy(row);
+    const centerX = cx(col);
+    const centerY = cy(row);
+    const s = 4;
+    const inset = CELL_INSET + 2;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+
+    switch (fromDir) {
+      case Direction.RIGHT: {
+        // Arrow on right edge pointing left (inward)
+        const ex = px + GRID_SIZE - inset;
+        ctx.moveTo(ex, centerY);
+        ctx.lineTo(ex + s, centerY - s);
+        ctx.lineTo(ex + s, centerY + s);
+        break;
+      }
+      case Direction.DOWN: {
+        const ey = py + GRID_SIZE - inset;
+        ctx.moveTo(centerX, ey);
+        ctx.lineTo(centerX - s, ey + s);
+        ctx.lineTo(centerX + s, ey + s);
+        break;
+      }
+      case Direction.LEFT: {
+        const ex = px + inset;
+        ctx.moveTo(ex, centerY);
+        ctx.lineTo(ex - s, centerY - s);
+        ctx.lineTo(ex - s, centerY + s);
+        break;
+      }
+      case Direction.UP: {
+        const ey = py + inset;
+        ctx.moveTo(centerX, ey);
+        ctx.lineTo(centerX - s, ey - s);
+        ctx.lineTo(centerX + s, ey - s);
+        break;
+      }
+    }
+
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // -------------------------------------------------------------------------
+  // Timer arc overlay (progress ring for timer-based machines)
+  // -------------------------------------------------------------------------
+
+  private drawTimerArc(col: number, row: number, emitInterval: number, lastEmitTime: number, color: string): void {
+    const ctx = this.ctx;
+    const mcx = cx(col);
+    const mcy = cy(row);
+    const r = CELL_INNER / 2 - 1;
+    const start = -HALF_PI;
+
+    const adjustedDelay = emitInterval / this.timescale;
+    const elapsed = now - lastEmitTime;
+    const progress = adjustedDelay > 0 ? clamp(elapsed / adjustedDelay, 0, 1) : 0;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(mcx, mcy, r, start, start + progress * TAU);
+    ctx.stroke();
   }
 
   // -------------------------------------------------------------------------
@@ -1378,7 +1732,7 @@ export class Renderer {
   // -------------------------------------------------------------------------
 
   private drawSpeechBubble(machine: DisplayMachine): void {
-    const age = performance.now() - machine.displayTime;
+    const age = now - machine.displayTime;
     const ctx = this.ctx;
 
     let alpha = 1;
@@ -1402,10 +1756,10 @@ export class Renderer {
     let bubbleY = my - BUBBLE_HEIGHT - BUBBLE_GAP;
 
     // Keep on screen (convert canvas bounds to world coords via effective scale)
-    const es = this.effectiveScale;
-    const visLeft = this.camera.x + BUBBLE_MARGIN / es;
-    const visRight = this.camera.x + this.canvas.width / es - bubbleWidth - BUBBLE_MARGIN / es;
-    const visTop = this.camera.y + BUBBLE_MARGIN / es;
+    const es = cam.getScale();
+    const visLeft = cam.getX() + BUBBLE_MARGIN / es;
+    const visRight = cam.getX() + this.canvas.width / es - bubbleWidth - BUBBLE_MARGIN / es;
+    const visTop = cam.getY() + BUBBLE_MARGIN / es;
     bubbleX = clamp(bubbleX, visLeft, visRight);
     if (bubbleY < visTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
 
@@ -1459,7 +1813,8 @@ export class Renderer {
     const command = machine.command || 'cat';
 
     const lines: string[] = [];
-    lines.push(`${cwd} $ ${command}`);
+    if (cwd !== '/') lines.push(cwd);
+    lines.push(`$ ${command}`);
 
     if (machine.stream) {
       lines.push(`> ${formatBytes(machine.streamBytesWritten)} in`);
@@ -1500,10 +1855,10 @@ export class Renderer {
     let bubbleX = mx - bubbleWidth / 2;
     let bubbleY = my - bubbleHeight - BUBBLE_GAP;
 
-    const ttEs = this.effectiveScale;
-    const ttVisLeft = this.camera.x + BUBBLE_MARGIN / ttEs;
-    const ttVisRight = this.camera.x + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
-    const ttVisTop = this.camera.y + BUBBLE_MARGIN / ttEs;
+    const ttEs = cam.getScale();
+    const ttVisLeft = cam.getX() + BUBBLE_MARGIN / ttEs;
+    const ttVisRight = cam.getX() + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
+    const ttVisTop = cam.getY() + BUBBLE_MARGIN / ttEs;
     bubbleX = clamp(bubbleX, ttVisLeft, ttVisRight);
     if (bubbleY < ttVisTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
 
@@ -1540,12 +1895,14 @@ export class Renderer {
       const line = lines[i];
       const ly = bubbleY + TOOLTIP_PADDING + i * TOOLTIP_LINE_HEIGHT;
 
-      if (i === 0) {
+      if (line.startsWith('$')) {
         ctx.fillStyle = CLR_TOOLTIP_CMD;
       } else if (line.startsWith('>')) {
         ctx.fillStyle = CLR_TOOLTIP_INPUT;
-      } else {
+      } else if (line.startsWith('<')) {
         ctx.fillStyle = CLR_TOOLTIP_OUTPUT;
+      } else {
+        ctx.fillStyle = CLR_TOOLTIP_BORDER;  // muted (cwd)
       }
 
       ctx.fillText(line, bubbleX + TOOLTIP_PADDING, ly, bubbleWidth - TOOLTIP_PADDING * 2);
@@ -1593,10 +1950,10 @@ export class Renderer {
     let bubbleX = mx - bubbleWidth / 2;
     let bubbleY = my - bubbleHeight - BUBBLE_GAP;
 
-    const ttEs = this.effectiveScale;
-    const ttVisLeft = this.camera.x + BUBBLE_MARGIN / ttEs;
-    const ttVisRight = this.camera.x + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
-    const ttVisTop = this.camera.y + BUBBLE_MARGIN / ttEs;
+    const ttEs = cam.getScale();
+    const ttVisLeft = cam.getX() + BUBBLE_MARGIN / ttEs;
+    const ttVisRight = cam.getX() + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
+    const ttVisTop = cam.getY() + BUBBLE_MARGIN / ttEs;
     bubbleX = clamp(bubbleX, ttVisLeft, ttVisRight);
     if (bubbleY < ttVisTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
 
@@ -1638,6 +1995,20 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Output direction detection (for arrow indicators)
+  // -------------------------------------------------------------------------
+
+  private findOutputDir(mx: number, my: number): Direction | null {
+    for (let i = 0; i < 4; i++) {
+      const cell = getCell(mx + OUTPUT_DX[i], my + OUTPUT_DY[i]);
+      if (cell.type === CellType.BELT && (cell as BeltCell).dir === OUTPUT_DIRS[i]) {
+        return OUTPUT_DIRS[i];
+      }
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
   // Public helpers
   // -------------------------------------------------------------------------
 
@@ -1646,8 +2017,8 @@ export class Renderer {
     const screenX = clientX - rect.left;
     const screenY = clientY - rect.top;
     // Screen → world → grid (using effective scale = fitScale * cam.scale)
-    const worldX = screenX / this.effectiveScale + this.camera.x;
-    const worldY = screenY / this.effectiveScale + this.camera.y;
+    const worldX = screenX / cam.getScale() + cam.getX();
+    const worldY = screenY / cam.getScale() + cam.getY();
     const x = Math.floor(worldX / GRID_SIZE);
     const y = Math.floor(worldY / GRID_SIZE);
     return { x, y };

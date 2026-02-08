@@ -6,7 +6,7 @@ RUN apk add --no-cache \
 	# Core utils
 	coreutils grep sed gawk bash vim perl python3 \
 	# Fun
-	figlet fortune \
+	figlet fortune fastfetch \
 	# Tools
 	jq curl wget git file bc tree less man-pages \
 	# Net

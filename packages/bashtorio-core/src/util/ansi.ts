@@ -2,6 +2,8 @@
  * Convert ANSI escape codes to HTML spans with CSS classes
  */
 
+import { escapeHtml } from './format';
+
 interface AnsiState {
   bold: boolean;
   dim: boolean;
@@ -48,13 +50,6 @@ const BG_COLORS: Record<number, string> = {
   106: 'bright-cyan',
   107: 'bright-white',
 };
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 function stateToClasses(state: AnsiState): string {
   const classes: string[] = [];

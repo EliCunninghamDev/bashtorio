@@ -1,12 +1,7 @@
 # TODO
 
-Base64 Save / Load
-Load from URL on page-load
-Migrate "System" UI to top bar
+Fix packet function
 
 
-## Camera
-Start camera in center of grid
-Add button to re-center camera on the factory using machine bounds helper
-Set zoom automatically based on factory bounds
-Rework zoom so that it accounts for shifting / stays centered
+Fun fibbonaci visualizer
+http://localhost:4321/?factory=pVVLb-MgEP4r1ihSD0slg-205bqrSjm3t909sPZUi4KxhXGaKsp_X-VlNWAH3L0h8z3gm_Gwgw2aTjYaOCNQolId8J872AK_XxL4AH5PHwjYjxaBQy3Kv1IjkMtqVW2BZ3tyIhQe4Q8qCwQqaYCnF1geB8tOMFYE7B9dQj6qm7mwLKC7dAksTpcGdAuXkEbp0qeAbu4SHuN0Q-WlFwLzCjJaN-blewsW6gIaZ0oji_rgEAL2aZR7GpnkBe_faRz_dI0PnNUPdFyVuQ2wjOuT8Qwyt57jMObmfhuWRqHitNjNa1IHNaX1ewhxGJB-2cumroWugAwrDuJ9ndztWiO1TRaMJAv6bcH2d0BA9LZ5scJY4G9CdUigk3q9qo7KnTUo6vPO9C9b9a2SpbCNuTK9rT7ZMP-jNvJcdE1vSpwhRQBraVfaotkIBbxID0kcVV5xa4FDmtBfGqZHo8FWiZmeZ86zaWrgkMDw5bUBDr7dpwnfinKNc8IiZ8oPVLKWFs3JgUBrsEOzwU8b1vQ44ANP2JuSbTvzJGfOtbQ_SHWv1BfawX--ez07rsmBeUDE6-QEtKgPvBep10kOh9_5tPm96fUx7WL_Dw

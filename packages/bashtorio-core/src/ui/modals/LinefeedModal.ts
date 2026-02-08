@@ -1,0 +1,41 @@
+import { html } from 'lit-html';
+import { BaseModal } from './BaseModal';
+import type { LinefeedMachine } from '../../game/types';
+
+export class LinefeedModal extends BaseModal {
+  private machine: LinefeedMachine | null = null;
+
+  template() {
+    return html`
+      <div class="modal-content">
+        <h3>Linefeed Emitter</h3>
+        <p class="modal-description">Set the interval between line feed emissions.</p>
+        <div class="form-group">
+          <label>Interval (ms):</label>
+          <input type="number" class="lf-interval" min="50" max="10000" step="50" value="500">
+        </div>
+        <div class="modal-buttons">
+          <button data-cancel>Cancel</button>
+          <button data-save class="primary">Save</button>
+        </div>
+      </div>
+    `;
+  }
+
+  configure(machine: LinefeedMachine) {
+    this.machine = machine;
+    this.qs<HTMLInputElement>('.lf-interval').value = String(machine.emitInterval);
+    this.show();
+    this.qs<HTMLInputElement>('.lf-interval').focus();
+    this.qs<HTMLInputElement>('.lf-interval').select();
+  }
+
+  protected save() {
+    if (this.machine) {
+      this.machine.emitInterval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.lf-interval').value) || 500);
+    }
+    this.hide();
+  }
+}
+
+customElements.define('bt-linefeed-modal', LinefeedModal);

@@ -148,10 +148,16 @@ export class LinuxVM {
 			// If loading from a pre-booted state, skip serial boot detection entirely
 			if (stateImage) {
 				onStatus('Restoring state...');
-				setTimeout(() => {
+				setTimeout(async () => {
+					if (this._networkRelay) {
+						onStatus('Configuring network...');
+						this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
+						await this.sleep(2000);
+					}
 					this._ready = true;
 					onStatus('State loaded, ready!');
-					this.mount9p(onStatus).then(() => resolve());
+					await this.mount9p(onStatus);
+					resolve();
 				}, 1000);
 			}
 
@@ -185,7 +191,7 @@ export class LinuxVM {
 
 							if (this._networkRelay) {
 								onStatus('Configuring network...');
-								this.emulator!.serial0_send('udhcpc -i eth0 2>/dev/null &\n');
+								this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
 								await this.sleep(2000);
 							}
 

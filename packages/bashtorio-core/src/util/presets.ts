@@ -327,6 +327,103 @@ function createDuplicatorDemoPreset(): SaveData {
 }
 
 
+// Fibonacci generator - awk feedback loop with duplicator, packer, flipper
+function createFibonacciPreset(): SaveData {
+  return {
+    version: 2,
+    cells: [
+      // Source "0 1\n" → belt → belt → DUP
+      { x: -6, y: -17, type: 'machine', machineIdx: 2 },
+      { x: -5, y: -17, type: 'belt', dir: 0 },
+      { x: -4, y: -17, type: 'belt', dir: 0 },
+      { x: -3, y: -17, type: 'machine', machineIdx: 1 },
+      // DUP right path → belt → belt → awk → belt → belt → sink loop-back
+      { x: -2, y: -17, type: 'belt', dir: 0 },
+      { x: -1, y: -17, type: 'belt', dir: 0 },
+      { x:  0, y: -17, type: 'machine', machineIdx: 0 },
+      { x:  1, y: -17, type: 'belt', dir: 0 },
+      { x:  2, y: -17, type: 'belt', dir: 1 },
+      // Feedback column: down to sink row, then left back
+      { x:  2, y: -16, type: 'belt', dir: 1 },
+      { x:  2, y: -15, type: 'belt', dir: 2 },
+      { x:  1, y: -15, type: 'belt', dir: 2 },
+      { x:  0, y: -15, type: 'belt', dir: 2 },
+      { x: -1, y: -15, type: 'belt', dir: 2 },
+      { x: -2, y: -15, type: 'belt', dir: 2 },
+      { x: -3, y: -15, type: 'belt', dir: 3 },
+      { x: -3, y: -16, type: 'belt', dir: 3 },
+      // DUP up path: replace → packer → flipper → unpacker → belt loop
+      { x: -3, y: -18, type: 'belt', dir: 3 },
+      { x: -3, y: -19, type: 'machine', machineIdx: 3 },
+      { x: -3, y: -20, type: 'belt', dir: 3 },
+      { x: -3, y: -21, type: 'machine', machineIdx: 4 },
+      { x: -3, y: -22, type: 'belt', dir: 3 },
+      { x: -3, y: -23, type: 'machine', machineIdx: 5 },
+      { x: -3, y: -24, type: 'belt', dir: 3 },
+      { x: -3, y: -25, type: 'machine', machineIdx: 7 },
+      // Flipper discard path → null
+      { x: -2, y: -23, type: 'belt', dir: 0 },
+      { x: -1, y: -23, type: 'machine', machineIdx: 6 },
+      // Unpacker → belt loop back to awk
+      { x: -2, y: -25, type: 'belt', dir: 0 },
+      { x: -1, y: -25, type: 'belt', dir: 0 },
+      { x:  0, y: -25, type: 'belt', dir: 0 },
+      { x:  1, y: -25, type: 'belt', dir: 0 },
+      { x:  2, y: -25, type: 'belt', dir: 1 },
+      { x:  2, y: -24, type: 'belt', dir: 1 },
+      { x:  2, y: -23, type: 'belt', dir: 1 },
+      { x:  2, y: -22, type: 'belt', dir: 1 },
+      { x:  2, y: -21, type: 'belt', dir: 1 },
+      { x:  2, y: -20, type: 'belt', dir: 1 },
+      { x:  2, y: -19, type: 'machine', machineIdx: 8 },
+      // Label source → belt → sink
+      { x:  0, y: -19, type: 'machine', machineIdx: 9 },
+      { x:  1, y: -19, type: 'belt', dir: 0 },
+    ],
+    machines: [
+      { x: 0, y: -17, type: MachineType.COMMAND, command: "awk '{print $2, $1+$2}'", autoStart: false, sinkId: 0, stream: false },
+      { x: -3, y: -17, type: MachineType.DUPLICATOR, command: '', autoStart: false, sinkId: 0 },
+      { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: '0 1\n' },
+      { x: -3, y: -19, type: MachineType.REPLACE, command: '', autoStart: false, sinkId: 0, replaceFrom: ' ', replaceTo: '\n' },
+      { x: -3, y: -21, type: MachineType.PACKER, command: '', autoStart: false, sinkId: 0, packerDelimiter: '\n', preserveDelimiter: true, packerDir: 3 },
+      { x: -3, y: -23, type: MachineType.FLIPPER, command: '', autoStart: false, sinkId: 0, flipperDir: 3 },
+      { x: -1, y: -23, type: MachineType.NULL, command: '', autoStart: false, sinkId: 0 },
+      { x: -3, y: -25, type: MachineType.UNPACKER, command: '', autoStart: false, sinkId: 0 },
+      { x: 2, y: -19, type: MachineType.SINK, command: '', autoStart: false, sinkId: 5, name: 'Fib' },
+      { x: 0, y: -19, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: 'Fibonacci Numbers:\n' },
+    ],
+    sinkIdCounter: 8,
+  };
+}
+
+// MML Tone - Twinkle Twinkle Little Star: SOURCE → awk stream → Tone synth
+function createMMLTonePreset(): SaveData {
+  // MML split into phrases (one per line) so awk streams output incrementally
+  const mml = 'O4CCGGAAGR\nFFEEDDCR\nGGFFEEDR\nGGFFEEDR\nCCGGAAGR\nFFEEDDCR\n';
+  // awk: converts note names to frequency bytes. fflush() ensures streaming output.
+  const cmd = `awk 'BEGIN{n["C"]=0;n["D"]=2;n["E"]=4;n["F"]=5;n["G"]=7;n["A"]=9;n["B"]=11}{o=4;for(i=1;i<=length;i++){c=substr($0,i,1);if(c=="O"){i++;o=substr($0,i,1)+0}else if(c in n){b=int(153+4.25*((o+1)*12+n[c]-69)+.5);printf"%c",b}else if(c=="R")printf"%c",0}fflush()}'`;
+
+  return {
+    version: 2,
+    cells: [
+      // SOURCE → belts → COMMAND(awk stream) → belts → TONE
+      { x: 0, y: 0, type: 'machine', machineIdx: 0 },
+      { x: 1, y: 0, type: 'belt', dir: 0 },
+      { x: 2, y: 0, type: 'belt', dir: 0 },
+      { x: 3, y: 0, type: 'machine', machineIdx: 1 },
+      { x: 4, y: 0, type: 'belt', dir: 0 },
+      { x: 5, y: 0, type: 'belt', dir: 0 },
+      { x: 6, y: 0, type: 'machine', machineIdx: 2 },
+    ],
+    machines: [
+      { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 150, sourceText: mml },
+      { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
+      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square' },
+    ],
+    sinkIdCounter: 1,
+  };
+}
+
 // Export all presets
 export const PRESETS: Preset[] = [
   {
@@ -370,5 +467,17 @@ export const PRESETS: Preset[] = [
     name: 'Duplicator Demo',
     description: 'Duplicator splits alternating-case text into uppercase and lowercase paths',
     data: createDuplicatorDemoPreset(),
+  },
+  {
+    id: 'fibonacci',
+    name: 'Fibonacci Generator',
+    description: 'Feedback loop: awk computes each pair, duplicator splits output to a sink and back through the loop',
+    data: createFibonacciPreset(),
+  },
+  {
+    id: 'mml-tone',
+    name: 'MML Music Box',
+    description: 'Twinkle Twinkle Little Star - awk parses MML note names into frequency bytes for the Tone synth',
+    data: createMMLTonePreset(),
   },
 ];

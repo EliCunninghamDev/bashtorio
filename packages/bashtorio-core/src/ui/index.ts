@@ -1,2 +1,2 @@
-export { InputHandler } from './InputHandler';
-export type { InputCallbacks } from './InputHandler';
+export { EditorInput as InputHandler } from './editorInput';
+export { Editor } from './editor';

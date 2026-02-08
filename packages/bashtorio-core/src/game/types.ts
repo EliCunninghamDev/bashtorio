@@ -1,6 +1,6 @@
 // Grid and rendering constants
-export const GRID_COLS = 32;
-export const GRID_ROWS = 32;
+export const DEFAULT_GRID_COLS = 32;
+export const DEFAULT_GRID_ROWS = 32;
 export const GRID_SIZE = 48;
 export const PACKET_SIZE = 32;
 export const PACKET_SPEED = 2;
@@ -22,9 +22,9 @@ export const DirDelta: Record<Direction, { dx: number; dy: number }> = {
 export const DirArrows = ['→', '↓', '←', '↑'] as const;
 
 export enum CellType {
-  EMPTY = 'empty',
-  BELT = 'belt',
-  MACHINE = 'machine',
+  EMPTY = 0,
+  BELT = 1,
+  MACHINE = 2,
 }
 
 export enum MachineType {
@@ -50,9 +50,11 @@ export enum MachineType {
   MATH = 'math',
   CLOCK = 'clock',
   LATCH = 'latch',
-  MERGER = 'merger',
+
   SPLITTER = 'splitter',
   SEVENSEG = 'sevenseg',
+  DRUM = 'drum',
+  TONE = 'tone',
 }
 
 export interface EmptyCell {
@@ -133,7 +135,7 @@ export interface FlipperMachine extends MachineBase {
   type: MachineType.FLIPPER;
   flipperDir: number;   // Initial direction (Direction), persisted
   flipperState: number; // Current runtime direction (Direction), reset on sim start
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface DuplicatorMachine extends MachineBase {
@@ -209,6 +211,7 @@ export interface GateMachine extends MachineBase {
 export interface WirelessMachine extends MachineBase {
   type: MachineType.WIRELESS;
   wirelessChannel: number;
+  wifiArc: number;
   outputBuffer: string;
 }
 
@@ -217,6 +220,8 @@ export interface ReplaceMachine extends MachineBase {
   replaceFrom: string;
   replaceTo: string;
   outputBuffer: string;
+  lastActivation: number;
+  animationProgress: number;
 }
 
 export interface MathMachine extends MachineBase {
@@ -239,10 +244,6 @@ export interface LatchMachine extends MachineBase {
   outputBuffer: string;
 }
 
-export interface MergerMachine extends MachineBase {
-  type: MachineType.MERGER;
-  outputBuffer: string;
-}
 
 export interface SplitterMachine extends MachineBase {
   type: MachineType.SPLITTER;
@@ -255,6 +256,16 @@ export interface SevenSegMachine extends MachineBase {
   type: MachineType.SEVENSEG;
   lastByte: number;
   outputBuffer: string;
+}
+
+export interface DrumMachine extends MachineBase {
+  type: MachineType.DRUM;
+  outputBuffer: string;
+}
+
+export interface ToneMachine extends MachineBase {
+  type: MachineType.TONE;
+  waveform: OscillatorType;
 }
 
 export type Machine =
@@ -280,13 +291,43 @@ export type Machine =
   | MathMachine
   | ClockMachine
   | LatchMachine
-  | MergerMachine
   | SplitterMachine
-  | SevenSegMachine;
+  | SevenSegMachine
+  | DrumMachine
+  | ToneMachine;
+
+export interface MachineByType {
+  [MachineType.SOURCE]: SourceMachine;
+  [MachineType.SINK]: SinkMachine;
+  [MachineType.COMMAND]: CommandMachine;
+  [MachineType.DISPLAY]: DisplayMachine;
+  [MachineType.NULL]: NullMachine;
+  [MachineType.LINEFEED]: LinefeedMachine;
+  [MachineType.FLIPPER]: FlipperMachine;
+  [MachineType.DUPLICATOR]: DuplicatorMachine;
+  [MachineType.CONSTANT]: ConstantMachine;
+  [MachineType.FILTER]: FilterMachine;
+  [MachineType.COUNTER]: CounterMachine;
+  [MachineType.DELAY]: DelayMachine;
+  [MachineType.KEYBOARD]: KeyboardMachine;
+  [MachineType.PACKER]: PackerMachine;
+  [MachineType.UNPACKER]: UnpackerMachine;
+  [MachineType.ROUTER]: RouterMachine;
+  [MachineType.GATE]: GateMachine;
+  [MachineType.WIRELESS]: WirelessMachine;
+  [MachineType.REPLACE]: ReplaceMachine;
+  [MachineType.MATH]: MathMachine;
+  [MachineType.CLOCK]: ClockMachine;
+  [MachineType.LATCH]: LatchMachine;
+
+  [MachineType.SPLITTER]: SplitterMachine;
+  [MachineType.SEVENSEG]: SevenSegMachine;
+  [MachineType.DRUM]: DrumMachine;
+  [MachineType.TONE]: ToneMachine;
+}
 
 export type BufferingMachine =
   | CommandMachine
-  | FlipperMachine
   | DuplicatorMachine
   | FilterMachine
   | CounterMachine
@@ -299,9 +340,9 @@ export type BufferingMachine =
   | ReplaceMachine
   | MathMachine
   | LatchMachine
-  | MergerMachine
   | SplitterMachine
-  | SevenSegMachine;
+  | SevenSegMachine
+  | DrumMachine;
 
 export function hasOutputBuffer(m: Machine): m is BufferingMachine {
   return 'outputBuffer' in m;
@@ -325,7 +366,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'merger' | 'sevenseg';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone';
 
 export interface OrphanedPacket {
 	id: number;
