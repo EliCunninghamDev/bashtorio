@@ -131,7 +131,7 @@ export class LinuxVM {
 
 			// If we have a pre-booted state, use it for instant boot
 			if (stateImage) {
-				v86Config.initial_state = { url: `${assetsPath}/${stateImage}` };
+				v86Config.initial_state = { url: stateImage.startsWith('http') ? stateImage : `${assetsPath}/${stateImage}` };
 				// No cdrom needed when loading state
 				delete v86Config.cdrom;
 				onStatus('Loading pre-booted state...');

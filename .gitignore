@@ -9,6 +9,7 @@ dist/
 # Environment
 .env
 .env.*
+!.env.example
 
 # OS
 .DS_Store
@@ -19,10 +20,13 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
-# v86 / VM artifacts
-public/v86/
-arch-state.bin
+# v86 / VM artifacts (BIOS, WASM, rootfs, state images)
+**/public/v86/
 *.iso
+*-state.bin
+
+# v86 build toolchain
+.v86-tools
 
 # Editor
 .claude

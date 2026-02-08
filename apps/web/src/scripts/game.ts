@@ -14,7 +14,7 @@ if (app) {
     assetsPath: '/v86',
     soundAssetsUrl: '/sounds',
     basefs: 'alpine-fs.json',
-    stateImage: 'alpine-state.bin',
+    stateImage: import.meta.env.PUBLIC_STATE_URL || 'alpine-state.bin',
     onBootStatus: (status) => console.log('[Boot]', status),
     onReady: () => console.log('Game ready!'),
     onError: (err) => console.error('Boot error:', err),
