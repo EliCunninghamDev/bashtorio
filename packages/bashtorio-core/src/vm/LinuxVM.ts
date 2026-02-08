@@ -1,3 +1,4 @@
+import { V86 } from '#v86'
 import type { V86Emulator, V86Config } from '../types/v86';
 
 export interface VMConfig {
@@ -143,7 +144,7 @@ export class LinuxVM {
 				onStatus('Creating emulator with network...');
 			}
 
-			this.emulator = new V86(v86Config);
+			this.emulator = new V86(v86Config) as V86Emulator;
 
 			// If loading from a pre-booted state, skip serial boot detection entirely
 			if (stateImage) {

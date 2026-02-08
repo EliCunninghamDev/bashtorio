@@ -6,7 +6,13 @@
     "dev": "pnpm --filter web dev",
     "prebuild": "node scripts/generate-acknowledgements.js",
     "build": "pnpm --filter bashtorio-core build && pnpm --filter web build",
-    "preview": "pnpm --filter web preview"
+    "preview": "pnpm --filter web preview",
+    "setup": "node scripts/setup.js",
+    "build:rootfs": "bash scripts/alpine/build.sh",
+    "build:state": "node scripts/alpine/build-state.js",
+    "build:v86": "bash scripts/build-v86.sh",
+    "build:all": "pnpm setup && pnpm build:v86 && pnpm build:rootfs && pnpm build:state && pnpm build",
+    "deploy": "pnpm build && pnpm --filter web deploy"
   },
   "keywords": ["game", "unix", "pipes", "linux", "v86", "emulator"],
   "license": "MIT"

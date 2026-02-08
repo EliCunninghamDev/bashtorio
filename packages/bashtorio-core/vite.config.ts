@@ -25,13 +25,6 @@ export default defineConfig({
       formats: ['es', 'umd'],
       fileName: 'bashtorio-core',
     },
-    rollupOptions: {
-      external: ['v86'],
-      output: {
-        globals: {
-          v86: 'V86',
-        },
-      },
-    },
+    rollupOptions: {},
   },
 });

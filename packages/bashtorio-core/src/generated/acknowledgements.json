@@ -175,36 +175,71 @@
     "url": "https://babel.dev/docs/en/next/babel-types"
   },
   {
+    "name": "@cloudflare/kv-asset-handler",
+    "version": "0.4.2",
+    "license": "MIT OR Apache-2.0",
+    "author": "wrangler@cloudflare.com",
+    "url": "https://github.com/cloudflare/workers-sdk#readme"
+  },
+  {
+    "name": "@cloudflare/unenv-preset",
+    "version": "2.12.0",
+    "license": "MIT OR Apache-2.0",
+    "author": "",
+    "url": "https://github.com/cloudflare/workers-sdk#readme"
+  },
+  {
+    "name": "@cloudflare/workerd-linux-64",
+    "version": "1.20260205.0",
+    "license": "Apache-2.0",
+    "author": "",
+    "url": "https://github.com/cloudflare/workerd"
+  },
+  {
+    "name": "@cspotcode/source-map-support",
+    "version": "0.8.1",
+    "license": "MIT",
+    "author": "",
+    "url": "https://github.com/cspotcode/node-source-map-support"
+  },
+  {
     "name": "@esbuild/linux-x64",
-    "version": "0.21.5",
+    "version": "0.27.0",
     "license": "MIT",
     "author": "",
     "url": "https://github.com/evanw/esbuild"
   },
   {
+    "name": "@img/colour",
+    "version": "1.0.0",
+    "license": "MIT",
+    "author": "",
+    "url": "https://github.com/lovell/colour"
+  },
+  {
     "name": "@img/sharp-libvips-linux-x64",
-    "version": "1.0.4",
+    "version": "1.2.4",
     "license": "LGPL-3.0-or-later",
     "author": "Lovell Fuller <npm@lovell.info>",
     "url": "https://sharp.pixelplumbing.com"
   },
   {
     "name": "@img/sharp-libvips-linuxmusl-x64",
-    "version": "1.0.4",
+    "version": "1.2.4",
     "license": "LGPL-3.0-or-later",
     "author": "Lovell Fuller <npm@lovell.info>",
     "url": "https://sharp.pixelplumbing.com"
   },
   {
     "name": "@img/sharp-linux-x64",
-    "version": "0.33.5",
+    "version": "0.34.5",
     "license": "Apache-2.0",
     "author": "Lovell Fuller <npm@lovell.info>",
     "url": "https://sharp.pixelplumbing.com"
   },
   {
     "name": "@img/sharp-linuxmusl-x64",
-    "version": "0.33.5",
+    "version": "0.34.5",
     "license": "Apache-2.0",
     "author": "Lovell Fuller <npm@lovell.info>",
     "url": "https://sharp.pixelplumbing.com"
@@ -253,10 +288,10 @@
   },
   {
     "name": "@jridgewell/trace-mapping",
-    "version": "0.3.31",
+    "version": "0.3.9",
     "license": "MIT",
     "author": "Justin Ridgewell <justin@ridgewell.name>",
-    "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping"
+    "url": "https://github.com/jridgewell/trace-mapping"
   },
   {
     "name": "@microsoft/api-extractor",
@@ -313,6 +348,27 @@
     "license": "MIT",
     "author": "pilcrowOnPaper",
     "url": "https://github.com/oslo-project/encoding"
+  },
+  {
+    "name": "@poppinss/colors",
+    "version": "4.1.6",
+    "license": "MIT",
+    "author": "virk",
+    "url": "https://github.com/poppinss/colors#readme"
+  },
+  {
+    "name": "@poppinss/dumper",
+    "version": "0.6.5",
+    "license": "MIT",
+    "author": "Harminder Virk <virk@adonisjs.com>",
+    "url": "https://github.com/poppinss/dumper#readme"
+  },
+  {
+    "name": "@poppinss/exception",
+    "version": "1.2.3",
+    "license": "MIT",
+    "author": "Harminder Virk <virk@adonisjs.com>",
+    "url": "https://github.com/poppinss/exception#readme"
   },
   {
     "name": "@rollup/pluginutils",
@@ -418,6 +474,20 @@
     "license": "MIT",
     "author": "Microsoft Corporation",
     "url": "https://github.com/shikijs/vscode-textmate"
+  },
+  {
+    "name": "@sindresorhus/is",
+    "version": "7.2.0",
+    "license": "MIT",
+    "author": "Sindre Sorhus",
+    "url": "sindresorhus/is"
+  },
+  {
+    "name": "@speed-highlight/core",
+    "version": "1.2.14",
+    "license": "CC0-1.0",
+    "author": "matubu",
+    "url": "https://github.com/speed-highlight/core#readme"
   },
   {
     "name": "@types/argparse",
@@ -700,6 +770,13 @@
     "url": "https://github.com/web-platform-dx/baseline-browser-mapping"
   },
   {
+    "name": "blake3-wasm",
+    "version": "2.1.5",
+    "license": "MIT",
+    "author": "Connor Peet <connor@peet.io>",
+    "url": "https://github.com/connor4312/blake3#readme"
+  },
+  {
     "name": "boxen",
     "version": "8.0.1",
     "license": "MIT",
@@ -876,7 +953,7 @@
   },
   {
     "name": "cookie",
-    "version": "0.7.2",
+    "version": "1.1.1",
     "license": "MIT",
     "author": "Roman Shtylman <shtylman@gmail.com>",
     "url": "jshttp/cookie"
@@ -994,6 +1071,13 @@
     "url": "https://github.com/fb55/entities"
   },
   {
+    "name": "error-stack-parser-es",
+    "version": "1.0.5",
+    "license": "MIT",
+    "author": "",
+    "url": "https://github.com/antfu/error-stack-parser-es#readme"
+  },
+  {
     "name": "es-module-lexer",
     "version": "1.7.0",
     "license": "MIT",
@@ -1002,7 +1086,7 @@
   },
   {
     "name": "esbuild",
-    "version": "0.21.5",
+    "version": "0.27.0",
     "license": "MIT",
     "author": "",
     "url": "https://github.com/evanw/esbuild"
@@ -1848,6 +1932,13 @@
     "url": "sindresorhus/mimic-function"
   },
   {
+    "name": "miniflare",
+    "version": "4.20260205.0",
+    "license": "MIT",
+    "author": "MrBBot <me@mrbbot.dev>",
+    "url": "https://github.com/cloudflare/workers-sdk/tree/main/packages/miniflare#readme"
+  },
+  {
     "name": "minimatch",
     "version": "9.0.5",
     "license": "ISC",
@@ -2000,6 +2091,13 @@
     "license": "MIT",
     "author": "Javier Blanco <http://jbgutierrez.info>",
     "url": "https://github.com/jbgutierrez/path-parse#readme"
+  },
+  {
+    "name": "path-to-regexp",
+    "version": "6.3.0",
+    "license": "MIT",
+    "author": "",
+    "url": "https://github.com/pillarjs/path-to-regexp"
   },
   {
     "name": "pathe",
@@ -2269,7 +2367,7 @@
   },
   {
     "name": "sharp",
-    "version": "0.33.5",
+    "version": "0.34.5",
     "license": "Apache-2.0",
     "author": "Lovell Fuller <npm@lovell.info>",
     "url": "https://sharp.pixelplumbing.com"
@@ -2457,6 +2555,20 @@
     "url": "unjs/ufo"
   },
   {
+    "name": "undici",
+    "version": "7.18.2",
+    "license": "MIT",
+    "author": "",
+    "url": "https://undici.nodejs.org"
+  },
+  {
+    "name": "unenv",
+    "version": "2.0.0-rc.24",
+    "license": "MIT",
+    "author": "",
+    "url": "unjs/unenv"
+  },
+  {
     "name": "unified",
     "version": "11.0.5",
     "license": "MIT",
@@ -2639,11 +2751,32 @@
     "url": "sindresorhus/widest-line"
   },
   {
+    "name": "workerd",
+    "version": "1.20260205.0",
+    "license": "Apache-2.0",
+    "author": "",
+    "url": "https://github.com/cloudflare/workerd"
+  },
+  {
+    "name": "wrangler",
+    "version": "4.63.0",
+    "license": "MIT OR Apache-2.0",
+    "author": "wrangler@cloudflare.com",
+    "url": "https://github.com/cloudflare/workers-sdk#readme"
+  },
+  {
     "name": "wrap-ansi",
     "version": "9.0.2",
     "license": "MIT",
     "author": "Sindre Sorhus",
     "url": "chalk/wrap-ansi"
+  },
+  {
+    "name": "ws",
+    "version": "8.18.0",
+    "license": "MIT",
+    "author": "Einar Otto Stangvik <einaros@gmail.com> (http://2x.io)",
+    "url": "https://github.com/websockets/ws"
   },
   {
     "name": "xxhash-wasm",
@@ -2672,6 +2805,20 @@
     "license": "MIT",
     "author": "Sindre Sorhus",
     "url": "sindresorhus/yocto-queue"
+  },
+  {
+    "name": "youch",
+    "version": "4.1.0-beta.10",
+    "license": "MIT",
+    "author": "Harminder Virk <virk@adonisjs.com>",
+    "url": "https://github.com/poppinss/youch#readme"
+  },
+  {
+    "name": "youch-core",
+    "version": "0.3.3",
+    "license": "MIT",
+    "author": "Harminder Virk <virk@adonisjs.com>",
+    "url": "https://github.com/poppinss/youch-core#readme"
   },
   {
     "name": "zod",

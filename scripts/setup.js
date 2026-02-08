@@ -2,27 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const V86_DIR = path.join(__dirname, '../public/v86');
-const NODE_MODULES_V86 = path.join(__dirname, '../node_modules/v86/build');
+const V86_DIR = path.join(__dirname, '../apps/web/public/v86');
 
 // Ensure v86 directory exists
 if (!fs.existsSync(V86_DIR)) {
   fs.mkdirSync(V86_DIR, { recursive: true });
-}
-
-// Copy files from node_modules/v86/build
-const filesToCopy = ['libv86.js', 'v86.wasm'];
-
-for (const file of filesToCopy) {
-  const src = path.join(NODE_MODULES_V86, file);
-  const dest = path.join(V86_DIR, file);
-  
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dest);
-    console.log(`✓ Copied ${file}`);
-  } else {
-    console.log(`✗ Missing ${file} in node_modules/v86/build`);
-  }
 }
 
 // Download function
@@ -79,10 +63,7 @@ const downloads = [
 async function main() {
   console.log('\n🏭 Bashtorio Setup\n');
   
-  console.log('Copying v86 core files...');
-  // Files already copied above
-  
-  console.log('\nDownloading BIOS and Linux image...');
+  console.log('Downloading BIOS files...');
   
   for (const { url, file } of downloads) {
     try {
@@ -95,8 +76,8 @@ async function main() {
   
   console.log('\n✓ Setup complete!\n');
   console.log('Next steps:');
-  console.log('  1. Build Alpine rootfs: bash scripts/alpine/build.sh');
-  console.log('  2. Generate state file: node scripts/alpine/build-state.js');
+  console.log('  1. Build Alpine rootfs: pnpm build:rootfs');
+  console.log('  2. Generate state file: pnpm build:state');
   console.log('  3. Run dev server:      pnpm dev\n');
 }
 

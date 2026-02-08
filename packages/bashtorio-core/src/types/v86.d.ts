@@ -32,12 +32,3 @@ export interface V86Emulator {
   create_file(path: string, data: Uint8Array): Promise<void>;
   read_file(path: string): Promise<Uint8Array>;
 }
-
-declare global {
-  interface Window {
-    V86: new (config: V86Config) => V86Emulator;
-  }
-  const V86: new (config: V86Config) => V86Emulator;
-}
-
-export { };

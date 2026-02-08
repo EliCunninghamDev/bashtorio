@@ -3,21 +3,32 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-V86_DIR="$ROOT_DIR/public/v86"
+V86_DIR="$ROOT_DIR/apps/web/public/v86"
 V86_REPO="$ROOT_DIR/.v86-tools"
 
-echo "=== Alpine Linux 9p-root build ==="
+if command -v podman &>/dev/null; then
+	CTR=podman
+elif command -v docker &>/dev/null; then
+	CTR=docker
+elif command -v nerdctl &>/dev/null; then
+	CTR=nerdctl
+else
+	echo "Error: no container runtime found (docker, podman, or nerdctl)" >&2
+	exit 1
+fi
+
+echo "=== Alpine Linux 9p-root build (using $CTR) ==="
 echo ""
 
-# 1. Docker build
-echo ">> Building Alpine Docker image (i386)..."
-docker build --platform linux/386 -t bashtorio-alpine "$SCRIPT_DIR"
+# 1. Container build
+echo ">> Building Alpine image (i386)..."
+$CTR build --platform linux/386 -t bashtorio-alpine "$SCRIPT_DIR"
 
 # 2. Export to tar
 echo ">> Exporting rootfs to tar..."
-CONTAINER_ID=$(docker create --platform linux/386 bashtorio-alpine /bin/true)
-docker export "$CONTAINER_ID" > "$SCRIPT_DIR/alpine-rootfs.tar"
-docker rm "$CONTAINER_ID" > /dev/null
+CONTAINER_ID=$($CTR create --platform linux/386 bashtorio-alpine /bin/true)
+$CTR export "$CONTAINER_ID" > "$SCRIPT_DIR/alpine-rootfs.tar"
+$CTR rm "$CONTAINER_ID" > /dev/null
 
 # Remove .dockerenv from tar (not needed in guest)
 echo ">> Cleaning tar..."

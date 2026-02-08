@@ -5,10 +5,14 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "deploy": "wrangler pages deploy"
   },
   "dependencies": {
     "astro": "^4.0.0",
     "bashtorio-core": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.63.0"
   }
 }

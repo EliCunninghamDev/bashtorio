@@ -7,19 +7,16 @@
 const fs = require("fs");
 const path = require("path");
 
-const V86_DIR = path.join(__dirname, "../../public/v86");
+const V86_DIR = path.join(__dirname, "../../apps/web/public/v86");
 const STATE_FILE = path.join(V86_DIR, "alpine-state.bin");
 
-// v86 from node_modules (check workspace package first, then root)
-const V86_PATH = [
-	path.join(__dirname, "../../packages/bashtorio-core/node_modules/v86/build/libv86.js"),
-	path.join(__dirname, "../../node_modules/v86/build/libv86.js"),
-].find(p => fs.existsSync(p));
+const V86_MJS = path.join(__dirname, "../../packages/bashtorio-core/vendor/v86/libv86.mjs");
+const V86_WASM = path.join(V86_DIR, "v86.wasm");
 
 async function main() {
-	if (!V86_PATH) {
-		console.error("v86 not found in node_modules");
-		console.error("Run: pnpm install");
+	if (!fs.existsSync(V86_MJS)) {
+		console.error("Vendored v86 not found at", V86_MJS);
+		console.error("Run: bash scripts/build-v86.sh");
 		process.exit(1);
 	}
 
@@ -31,14 +28,13 @@ async function main() {
 		process.exit(1);
 	}
 
-	const v86MjsPath = V86_PATH.replace("libv86.js", "libv86.mjs");
-	console.log("Loading v86 from", v86MjsPath);
-	const { V86 } = await import("file://" + v86MjsPath);
+	console.log("Loading v86 from", V86_MJS);
+	const { V86 } = await import("file://" + V86_MJS);
 
 	console.log("Booting Alpine Linux...");
 
 	const emulator = new V86({
-		wasm_path: path.join(path.dirname(V86_PATH), "v86.wasm"),
+		wasm_path: V86_WASM,
 		memory_size: 512 * 1024 * 1024,
 		vga_memory_size: 2 * 1024 * 1024,
 		screen_container: null,

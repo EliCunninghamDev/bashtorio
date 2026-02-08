@@ -1,223 +1,187 @@
 # Bashtorio
 
-**Unix Pipe Factory Game - Factorio meets Bash**
+**Factorio meets Bash** - build conveyor belt factories that process data through real Unix commands running in a Linux VM in your browser.
 
-Build conveyor belt systems to process data through real Unix commands running in an actual Linux VM in your browser. Place sources, route bytes along belts, pipe them through `grep`, `sed`, `awk`, and any other command, then collect the output in sinks.
+Place sources, route bytes along belts, pipe them through `grep`, `sed`, `awk`, or any other command, and collect output in sinks. Every Shell machine runs actual commands inside an Alpine Linux system emulated in-browser via [v86](https://copy.sh/v86/).
 
-## Architecture
+## How It Works
 
-### Monorepo Layout
+In Unix, a **pipe** connects the output of one program to the input of another:
 
 ```
-bashtorio/
-├── packages/bashtorio-core/   # Core game library (TypeScript)
-│   └── src/
-│       ├── game/              # Types, grid, simulation, packets
-│       ├── render/            # Canvas renderer
-│       ├── ui/                # Input handling, components
-│       ├── vm/                # v86 Linux VM integration
-│       ├── audio/             # Sound system
-│       ├── events/            # Event bus
-│       ├── util/              # Themes, save/load, presets, settings
-│       └── index.ts           # Main entry point & UI assembly
-└── apps/web/                  # Astro frontend
-    └── src/
-        ├── pages/index.astro  # Single-page shell
-        └── scripts/game.ts    # Mounts the game
+echo "hello" | tr a-z A-Z
 ```
 
-The core library exports a `mount()` function that takes a container element, asset paths, and callbacks, returning a `BashtorioInstance` with full control over state, VM, renderer, input, sound, and events. The Astro app is a thin shell that calls `mount()` and serves static assets.
+The shell creates an anonymous pipe - a small kernel buffer - between the two processes. `echo` writes bytes in, `tr` reads them out. No files on disk, no intermediate copies.
 
-### Build
-
-```sh
-pnpm install
-pnpm build    # tsc + vite (core) → astro build (web)
-pnpm dev      # dev server with HMR
+```
+  echo "hello"          tr a-z A-Z
+       |                    ^
+       |  ┌──────────────┐  |
+       └─>│ kernel buffer │──┘
+          └──────────────┘
+            anonymous pipe
 ```
 
-## Game Concepts
+Bashtorio takes this idea and makes it visual. Bytes are physical objects that ride conveyor belts between machines. When a byte reaches a Shell machine, it gets piped into a real Unix command running inside the VM.
 
-### Grid & Belts
+### Shell Machine Modes
 
-The game world is a **32×32 grid** (48px per cell). Cells can hold:
+**Pipe mode** (default) - each incoming byte/line is piped to the command as stdin. The command runs, produces output, and exits.
 
-- **Belts** - Directional conveyors (right/down/left/up) that carry packets
-- **Splitters** - Alternate packets between two output directions
-- **Machines** - 23 types of processing units (see below)
+**Stream mode** - creates a persistent named pipe (FIFO) on the guest filesystem. The command stays alive and bytes stream through continuously. This is how stateful commands like `awk` or `sort` work without restarting on every byte.
 
-Packets are visual representations of bytes/characters. They move along belts at a fixed speed, change direction at cell transitions, and **block when the next cell is occupied** (backpressure). Packets that fall off the grid get orphaned - they tumble with gravity and fade out.
+**Input mode** - choose whether bytes arrive as stdin or as command arguments.
 
-### Machines
+**Auto-run** - execute immediately on simulation start, for commands that don't need input (like `date`).
 
-Machines are a discriminated union (`Machine`) with `type` as the discriminant. Key base types:
+### The VM Under the Hood
 
-- `MachineBase` - shared `x`, `y`, `lastCommandTime`
-- `EmitTimer` - shared `emitInterval`, `lastEmitTime` (SOURCE, LINEFEED, CONSTANT, CLOCK)
-- `BufferingMachine` - union of 15 types that have an `outputBuffer` (emit one char at a time)
-
-#### Source Machines
-
-| Machine | Key | Description |
-|---------|-----|-------------|
-| SOURCE | E | Emits configured text one character at a time |
-| CONSTANT | T | Loops text forever at a set interval |
-| KEYBOARD | K | Emits real keypresses during simulation |
-| LINEFEED | C | Emits `\n` on a timer |
-| CLOCK | O | Emits a configurable byte on a timer |
-
-#### Routing Machines
-
-| Machine | Key | Description |
-|---------|-----|-------------|
-| BELT | Q | Directional conveyor |
-| SPLITTER | W | Alternates packets between two outputs |
-| FLIPPER | V | Rotates output direction clockwise on each byte |
-| DUPLICATOR | D | Sends same byte to ALL adjacent output belts (waits for all clear) |
-| ROUTER | H | Match byte goes one direction, else goes another |
-| GATE | I | Data passes only when control signal opens it (dual-input) |
-| WIRELESS | J | Broadcasts to all same-channel wireless machines instantly |
-| MERGER | - | Simple passthrough for combining flows |
-
-#### Processing Machines
-
-| Machine | Key | Description |
-|---------|-----|-------------|
-| COMMAND (Shell) | F | Executes real Unix commands via the VM |
-| FILTER | G | Pass or block a specific byte |
-| COUNTER | N | Counts bytes, emits count on a trigger byte |
-| DELAY | B | Holds packets for a configured duration |
-| PACKER | P | Accumulates bytes until delimiter, emits as multi-char packet |
-| UNPACKER | U | Receives a packet, dumps all chars one at a time |
-| REPLACE | L | Byte substitution (a → b) |
-| MATH | M | Byte arithmetic (add/sub/mul/mod/xor/and/or/not), clamped 0–255 |
-| LATCH | Y | Stores a data byte, emits it on control signal (dual-input) |
-
-#### Output Machines
-
-| Machine | Key | Description |
-|---------|-----|-------------|
-| SINK | S | Collects output, displays as text in the sidebar |
-| DISPLAY | A | Shows complete lines as speech bubbles above the machine |
-| NULL | X | Silently discards packets |
-
-### The Shell Machine (COMMAND)
-
-The most powerful machine. It runs real Unix commands inside an Alpine Linux VM (via [v86](https://github.com/nicknameismy/nicknameismyv86) emulator):
-
-- **Pipe mode** - Collects a complete line of input, runs the command with that line as stdin, emits output
-- **Stream mode** - Creates a persistent named pipe (FIFO). Input bytes stream in continuously, output streams back. Useful for stateful commands like `awk` or `sort`
-- **Input mode** - Pipe as stdin, or append bytes as command arguments
-- **Auto-run** - Execute immediately on simulation start (for commands that don't need input, like `date`)
-
-### Simulation
-
-The simulation loop (`updateSimulation()`) runs every frame:
-
-1. **Emit phase** - Machines with `outputBuffer` emit one character at a time on the `emitDelay` timer (~150ms). Timer-based machines (LINEFEED, CONSTANT, CLOCK) emit on their own intervals.
-2. **Delay queue** - DELAY machines release packets whose timers have expired.
-3. **Command processing** - Shell machines read/write to the VM. Stream mode polls FIFOs; pipe mode processes complete lines.
-4. **Packet movement** - Packets advance along belts. On cell transitions, they're delivered to machines via `deliverToMachine()`, which handles type-specific logic (buffering, filtering, routing, etc.).
-5. **Orphan physics** - Stray packets fall with gravity and fade.
-
-Direction-aware delivery: `deliverToMachine()` receives a `fromDir` parameter so GATE and LATCH can distinguish data input from control input.
-
-## Systems
-
-### Event Bus
-
-A typed pub/sub bus (`GameEventBus`) with ~22 events connecting all subsystems:
-
-- **UI events** - `place`, `erase`, `select`, `modeChange`, `placeableChange`, `directionChange`
-- **Simulation events** - `simulationStart`, `simulationEnd`
-- **Machine events** - `machineReceive`, `sinkReceive`, `commandStart`, `commandComplete`, `streamWrite`
-- **Other** - `toast`, `keyPress`, `pack`, `speedChange`
-
-### Renderer
-
-Canvas-based with a camera system (pan with Ctrl+drag, zoom with scroll wheel):
-
-- Draws grid lines, belts (animated directional arrows), splitters, machines (colored boxes with labels), packets (rounded rects colored by char type), speech bubbles, hover tooltips, and a semi-transparent placement preview
-- Packets are color-coded: control chars, spaces, lowercase, uppercase, digits, extended ASCII, punctuation
-- Machines flash on byte receive (interpolates toward a highlight color)
-- Fully themed - all colors come from the active theme
-
-### Themes
-
-Four built-in themes: **Midnight** (default, dark purple/blue), **Monokai**, **Dracula**, **Solarized Dark**. Themes define 50+ color properties spanning canvas, grid, belts, packets, machines, UI chrome, and speech bubbles. Switching is instant - no reload needed.
-
-### Audio
-
-Event-driven sound system connected to the event bus:
-
-- **Ambient loops** - Crossfade between editing and simulation ambient tracks
-- **SFX** - Place, erase, select, shell typing, sink receive, stream write, pack
-- **Variant support** - e.g. `shellType1`–`shellType6` chosen randomly
-- **Pitch variation** - Optional random pitch on SFX
-- **Throttling** - Min interval per sound to prevent spam
-- Separate volume controls for ambient and machine sounds
-
-### Save/Load
-
-Serializes the full grid and machine state to JSON:
-
-- Grid cells reference machines by index
-- Machine properties serialized per-type (only non-default values)
-- Backward compatible - handles legacy field names from older versions
-- Unknown machine types fall back to NULL on load
-- Download as `.json` / upload to restore
-
-### Presets
-
-Programmatically constructed example factories:
-
-- **Sample** - source → grep → sink
-- **ROT13** - encode/decode with duplicator paths
-- **Uppercase** - source → `tr a-z A-Z` → sink
-- **Word Reverser** - source → `rev` → sink
-
-### UI
-
-The sidebar shows:
-
-- **Output panel** - Text received by each sink
-- **Stats** - Uptime, active packets, throughput, commands run, errors, avg command time
-- **Streams** - Active FIFO stream status
-- **Command log** - Recent command executions with duration and error status
-- **VM Terminal** - Collapsible direct access to the Linux shell
-
-Each machine type has a configuration modal (command text, intervals, byte selectors, direction pickers, etc.). The `ByteInput` component provides a single-byte picker with support for escape sequences (`\n`, `\t`), hex (`0xFF`), control names (`LF`, `ESC`), and printable characters.
+The v86 emulator runs a full x86 CPU in JavaScript/WebAssembly, booting a real Linux kernel with a real filesystem. Each Shell machine gets its own shell session with an independent working directory - just like having multiple terminal windows open.
 
 ## Controls
 
 | Action | Input |
 |--------|-------|
-| Place item | Left click |
-| Paint belts | Left drag |
-| Erase | Right click/drag |
+| Place item | Left click (in Place mode) |
+| Paint belts | Left click + drag |
+| Erase | Right click or drag |
 | Pan camera | Ctrl + left drag |
-| Select mode | 1 |
-| Erase mode | 2 |
-| Machine mode | 3 |
-| Rotate direction | R |
-| Toggle simulation | Space |
-| Configure machine | Click in select mode |
+| Zoom | Scroll wheel |
+| Select mode | `1` |
+| Erase mode | `2` |
+| Place mode | `3` |
+| Rotate direction | `R` |
+| Toggle simulation | `Space` |
+| Open machine picker | `E` |
+| Configure machine | Click in Select mode |
 
-## Adding a New Machine Type
+### Machine Shortcuts (Place mode)
 
-Files to modify (in order):
+| Key | Machine | | Key | Machine |
+|-----|---------|-|-----|---------|
+| `Q` | Belt | | `P` | Packer |
+| `W` | Splitter | | `U` | Unpacker |
+| `F` | Shell | | `H` | Router |
+| `S` | Sink | | `I` | Gate |
+| `A` | Display | | `J` | Wireless |
+| `X` | Null | | `L` | Replace |
+| `C` | Linefeed | | `M` | Math |
+| `V` | Flipper | | `O` | Clock |
+| `D` | Duplicator | | `Y` | Latch |
+| `T` | Constant | | `Z` | 7-Segment |
+| `G` | Filter | | | Drum (picker only) |
+| `N` | Counter | | | Tone (picker only) |
+| `B` | Delay | | | Merger (picker only) |
+| `K` | Keyboard | | | |
 
-1. **`game/types.ts`** - Add to `MachineType` enum, create interface extending `MachineBase`, add to `Machine` union, add to `PlaceableType`
-2. **`game/grid.ts`** - Add case in `placeMachine()` switch
-3. **`game/simulation.ts`** - Add to `deliverToMachine()`, `emitFromMachine()`, `updateSimulation()` loop, and `startSimulation()` reset
-4. **`render/renderer.ts`** - Add to `MACHINE_COLORS`, `drawMachine()` label, `drawPlacementPreview()`
-5. **`ui/InputHandler.ts`** - Add keyboard shortcut, callback, select-mode click handler, `placeCurrentItem()` case
-6. **`util/saveload.ts`** - Add to `SerializedMachine`, serialize/deserialize
-7. **`util/themes.ts`** - Add colors in `makeTheme()` and default fallback
-8. **`index.ts`** - Add to toolbar placeables, machine picker HTML, modal HTML + logic, input callback wiring
+During simulation, press the keyboard button to enter **passthrough mode** - keystrokes go directly to Keyboard machines. Press `Esc` to exit.
+
+## Machines
+
+### Sources
+- **Source** - emits configured text, one character at a time
+- **Constant** - loops text forever at a set interval
+- **Keyboard** - emits real keypresses during simulation
+- **Linefeed** - emits `\n` on a timer
+- **Clock** - emits a configurable byte on a timer
+
+### Routing
+- **Belt** - directional conveyor that carries packets
+- **Splitter** - alternates packets between two output directions (2-cell machine)
+- **Flipper** - rotates output direction clockwise on each byte received
+- **Duplicator** - sends same byte to all adjacent output belts simultaneously
+- **Router** - matching bytes go one direction, everything else goes another
+- **Gate** - data passes only when a control signal opens it (dual-input)
+- **Wireless** - broadcasts to all same-channel wireless machines instantly
+- **Merger** - combines multiple input flows into one output
+
+### Processing
+- **Shell** - executes real Unix commands via the VM (pipe or stream mode)
+- **Filter** - passes or blocks a specific byte value
+- **Counter** - counts bytes, emits the count on a trigger byte
+- **Delay** - holds packets for a configured duration
+- **Packer** - accumulates bytes until a delimiter, then emits them as one multi-char packet
+- **Unpacker** - receives a packet and re-emits each character individually
+- **Replace** - byte substitution (a -> b)
+- **Math** - byte arithmetic (add/sub/mul/mod/xor/and/or/not), clamped 0-255
+- **Latch** - stores a data byte, emits it when a control signal arrives (dual-input)
+
+### Output
+- **Sink** - collects output and displays it as text in the sidebar
+- **Display** - shows complete lines as speech bubbles above the machine
+- **Null** - silently discards packets
+- **7-Segment** - visual hex display of the last byte received
+- **Drum** - plays a drum sound based on the byte value, passes it through
+- **Tone** - synthesizer that maps byte values to audio frequencies (configurable waveform)
+
+## Development
+
+### Prerequisites
+
+- Node.js
+- [pnpm](https://pnpm.io/)
+
+### Setup
+
+```sh
+pnpm install
+pnpm setup          # download BIOS images
+pnpm build:rootfs   # build Alpine Linux rootfs (requires Docker)
+pnpm build:state    # boot the VM and save a pre-booted snapshot
+pnpm dev            # dev server with HMR
+```
+
+`pnpm build` does a production build (tsc + vite + astro).
+
+#### Rebuilding v86
+
+The v86 emulator (`libv86.mjs` + `v86.wasm`) is built from source and vendored into the repo, so most developers don't need to rebuild it. If you do need to:
+
+```sh
+pnpm build:v86   # requires Rust (wasm32-unknown-unknown), Clang, Java
+```
+
+This builds from the `.v86-tools` checkout (pinned to a known-good commit) and copies artifacts to `packages/bashtorio-core/vendor/v86/` and `apps/web/public/v86/`.
+
+### Project Structure
+
+```
+bashtorio/
+├── packages/bashtorio-core/   # Core game library (TypeScript)
+│   └── src/
+│       ├── game/              # Types, grid, simulation, machines, packets
+│       ├── render/            # Canvas renderer
+│       ├── ui/                # Components, modals, editor, toolbar
+│       ├── vm/                # v86 Linux VM integration
+│       ├── audio/             # Sound + tone synthesis
+│       ├── events/            # Typed event bus
+│       ├── util/              # Themes, save/load, presets, settings
+│       └── index.ts           # mount() entry point
+└── apps/web/                  # Astro frontend (thin shell)
+    └── src/
+        ├── pages/index.astro
+        └── scripts/game.ts    # Calls mount()
+```
+
+The core library exports a `mount()` function. The Astro app calls it and serves static assets (VM images, sounds).
+
+### VM Assets
+
+The v86 JS module is vendored at `packages/bashtorio-core/vendor/v86/libv86.mjs` (committed to git). The remaining runtime files go in `apps/web/public/v86/` (gitignored):
+- `v86.wasm` - emulator WebAssembly (built by `pnpm build:v86`)
+- `seabios.bin`, `vgabios.bin` - BIOS images (downloaded by `pnpm setup`)
+- `alpine-fs.json` + `alpine-rootfs-flat/` - filesystem (built by `pnpm build:rootfs`)
+- `alpine-state.bin` - pre-booted VM snapshot (built by `pnpm build:state`)
+
+For Cloudflare Pages deployment, `alpine-state.bin` (73MB) is served from R2 via the `PUBLIC_STATE_URL` environment variable.
+
+### Adding a New Machine Type
+
+You'll need to touch: `types.ts`, `machines.ts`, `simulation.ts`, `renderer.ts`, `editor.ts`, `placeableButton.ts`, `saveload.ts`, `themes.ts`, and optionally a config modal + keyboard shortcut.
 
 ## Credits
 
-- [v86](https://copy.sh/v86/) - x86 emulator in JavaScript
-- [Alpine Linux](https://alpinelinux.org/) - Minimal Linux distribution
+- [v86](https://copy.sh/v86/) - x86 emulator in JavaScript/WebAssembly
+- [Alpine Linux](https://alpinelinux.org/) - minimal Linux distribution
 - Inspired by [Factorio](https://factorio.com/)

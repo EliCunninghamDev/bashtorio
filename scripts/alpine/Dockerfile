@@ -1,4 +1,4 @@
-FROM i386/alpine:3.21
+FROM docker.io/i386/alpine:3.21
 
 # Install virt kernel with 9p support + kitchen-sink packages
 RUN apk add --no-cache \
