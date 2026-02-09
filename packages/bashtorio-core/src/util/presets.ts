@@ -26,7 +26,7 @@ function placeBelt(grid: any[][], x: number, y: number, dir: Direction) {
 }
 
 // Helper to place a machine
-function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; async?: boolean; sinkId?: number; flipperDir?: Direction; emitInterval?: number; sourceText?: string } = {}) {
+function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; async?: boolean; sinkId?: number; flipperDir?: Direction; emitInterval?: number; sourceText?: string; loop?: boolean } = {}) {
   const idx = machines.length;
   const m: any = {
     x, y, type,
@@ -38,6 +38,7 @@ function placeMachine(grid: any[][], machines: any[], x: number, y: number, type
   if (opts.flipperDir !== undefined) m.flipperDir = opts.flipperDir;
   if (opts.emitInterval !== undefined) m.emitInterval = opts.emitInterval;
   if (opts.sourceText !== undefined) m.sourceText = opts.sourceText;
+  if (opts.loop !== undefined) m.loop = opts.loop;
   machines.push(m);
   grid[x][y] = { type: CellType.MACHINE, machineIdx: idx };
 }
@@ -49,7 +50,7 @@ function createSamplePreset(): SaveData {
   const machines: any[] = [];
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n', loop: false });
 
   // Belt from source to command
   for (let x = 2; x <= 4; x++) {
@@ -88,7 +89,7 @@ function createRot13Preset(): SaveData {
   const rot13 = "tr 'A-Za-z' 'N-ZA-Mn-za-m'";
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\nROT13 twice returns the original text.\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\nROT13 twice returns the original text.\n', loop: false });
 
   // Belt from source to encode
   for (let x = 2; x <= 3; x++) {
@@ -136,7 +137,7 @@ function createUppercasePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\nthis text will be uppercase\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\nthis text will be uppercase\n', loop: false });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -168,7 +169,7 @@ function createWordReverserPreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World\nreverse me\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World\nreverse me\n', loop: false });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -200,7 +201,7 @@ function createPipelinePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\npipeline demo\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\npipeline demo\n', loop: false });
 
   for (let x = 2; x <= 3; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -240,7 +241,7 @@ function createBase64Preset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\n' });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\n', loop: false });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -274,7 +275,7 @@ function createDuplicatorDemoPreset(): SaveData {
 	const machines: any[] = [];
 
 	// Source at (1, 3) - feeds alternating-case text
-	placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n' });
+	placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n', loop: false });
 
 	// Belt from source to duplicator
 	for (let x = 2; x <= 4; x++) {
@@ -383,14 +384,14 @@ function createFibonacciPreset(): SaveData {
     machines: [
       { x: 0, y: -17, type: MachineType.COMMAND, command: "awk '{print $2, $1+$2}'", autoStart: false, sinkId: 0, stream: false },
       { x: -3, y: -17, type: MachineType.DUPLICATOR, command: '', autoStart: false, sinkId: 0 },
-      { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: '0 1\n' },
+      { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: '0 1\n', loop: false },
       { x: -3, y: -19, type: MachineType.REPLACE, command: '', autoStart: false, sinkId: 0, replaceFrom: ' ', replaceTo: '\n' },
       { x: -3, y: -21, type: MachineType.PACKER, command: '', autoStart: false, sinkId: 0, packerDelimiter: '\n', preserveDelimiter: true, packerDir: 3 },
       { x: -3, y: -23, type: MachineType.FLIPPER, command: '', autoStart: false, sinkId: 0, flipperDir: 3 },
       { x: -1, y: -23, type: MachineType.NULL, command: '', autoStart: false, sinkId: 0 },
       { x: -3, y: -25, type: MachineType.UNPACKER, command: '', autoStart: false, sinkId: 0 },
       { x: 2, y: -19, type: MachineType.SINK, command: '', autoStart: false, sinkId: 5, name: 'Fib' },
-      { x: 0, y: -19, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: 'Fibonacci Numbers:\n' },
+      { x: 0, y: -19, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 100, sourceText: 'Fibonacci Numbers:\n', loop: false },
     ],
     sinkIdCounter: 8,
   };
@@ -459,10 +460,10 @@ function createMMLTonePreset(): SaveData {
     machines: [
       { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: melody, loop: true },
       { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
-      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square' },
+      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'sine' },
       { x: 0, y: 2, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: bass, loop: true },
       { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
-      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
+      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'sine' },
     ],
     sinkIdCounter: 1,
     beltSpeed: 6,

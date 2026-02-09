@@ -8,8 +8,10 @@ import { onGameEvent } from '../events/bus';
 // covering the full 88-key piano via  f = 440·2^((n-69)/12).
 //
 // Waveform-specific gain offsets keep perceived loudness even.
-// A 5 kHz low-pass filter rolls off piercing overtones on saw/square
+// A 4 kHz low-pass filter rolls off piercing overtones on saw/square
 // (transparent for sine/triangle which lack high harmonics).
+// A master DynamicsCompressor acts as a brickwall limiter to cap
+// output regardless of how many tones stack up.
 // 5 ms attack / 20 ms release eliminate clicks.
 // ---------------------------------------------------------------------------
 
@@ -28,17 +30,28 @@ const WAVEFORM_GAIN: Record<string, number> = {
 
 const ATTACK = 0.005;      // 5 ms
 const RELEASE = 0.02;      // 20 ms
-const FILTER_FREQ = 5000;  // Hz
+const FILTER_FREQ = 4000;  // Hz
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let limiter: DynamicsCompressorNode | null = null;
 const activeTones = new Map<string, ActiveTone>();
 
 function ensureContext(): AudioContext {
   if (!ctx) {
     ctx = new AudioContext();
+
+    // Brickwall limiter — prevents clipping when many tones stack
+    limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;   // dB — start limiting early
+    limiter.knee.value = 3;         // dB — gentle transition
+    limiter.ratio.value = 20;       // near-brickwall
+    limiter.attack.value = 0.002;   // 2 ms — fast clamp
+    limiter.release.value = 0.05;   // 50 ms
+
     masterGain = ctx.createGain();
-    masterGain.connect(ctx.destination);
+    masterGain.connect(limiter);
+    limiter.connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -74,7 +87,7 @@ function startTone(id: string, freq: number, waveform: OscillatorType): void {
   osc.type = waveform;
   osc.frequency.setValueAtTime(freq, ac.currentTime);
 
-  // 5 kHz low-pass: tames saw/square harmonics, transparent for sine/triangle
+  // 4 kHz low-pass: tames saw/square harmonics, transparent for sine/triangle
   filter.type = 'lowpass';
   filter.frequency.value = FILTER_FREQ;
 
@@ -143,5 +156,6 @@ export function destroyTones(): void {
     ctx.close();
     ctx = null;
     masterGain = null;
+    limiter = null;
   }
 }

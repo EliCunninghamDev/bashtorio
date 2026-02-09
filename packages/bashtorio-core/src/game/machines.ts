@@ -20,7 +20,7 @@ export function clearMachines(): void {
 export type MachineDefaults<T extends MachineType> = Omit<MachineByType[T], keyof MachineBase | 'type'>;
 
 export function sourceDefaults(): MachineDefaults<MachineType.SOURCE> {
-  return { sourceText: 'Hello World!\n', sourcePos: 0, clock: new EmitTimer(500), gapTimer: new EmitTimer(0), loop: true };
+  return { sourceText: 'Hello World!\n', sourcePos: 0, clock: new EmitTimer(500), gapTimer: new EmitTimer(0), loop: false };
 }
 
 export function sinkDefaults(): MachineDefaults<MachineType.SINK> {

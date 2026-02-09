@@ -524,12 +524,25 @@ export class LinuxVM {
 		};
 		this.activeJobs.set(jobId, job);
 
-		// Build the guest-side command:
-		// 1. Create FIFO
-		// 2. Start command with <> (read-write) on the FIFO so it won't get EOF
-		// 3. Save PID for later cleanup
+		// Build the guest-side shell command. Broken down:
+		//
+		//   mkfifo <fifo>                    — create named pipe for input
+		//   (                                — run everything in a background subshell
+		//     cd <saved_cwd>                 — restore working directory
+		//     stdbuf -o0 <cmd>               — run user's command with unbuffered stdout
+		//       <> <fifo>                    —   stdin = FIFO opened read-write (prevents EOF)
+		//       > <out> 2>&1                 —   stdout+stderr → output file (polled by host)
+		//     echo $? > <exit>               — write exit code when command finishes
+		//     pwd > <cwd>                    — save final working directory
+		//   ) &                              — background the subshell
+		//   echo $! > <pid>                  — save its PID so we can kill it later
+		//
+		// stdbuf -o0 disables stdio buffering via LD_PRELOAD. Without it, commands
+		// like grep block-buffer their output when stdout is a file, so matches
+		// never reach the poll file until the 4K buffer fills or the process exits.
+		// Requires coreutils installed in the guest.
 		const cwdCmd = `cd "$(cat ${shell.workDir}/cwd)" 2>/dev/null || cd /`;
-		const fullCmd = `mkfifo ${guestDir}/${jobId}_fifo; (${cwdCmd}; ${cmd} <> ${guestDir}/${jobId}_fifo > ${guestDir}/${jobId}_out 2>&1; echo $? > ${guestDir}/${jobId}_exit; pwd > ${guestDir}/${jobId}_cwd; pwd > ${shell.workDir}/cwd) & echo $! > ${guestDir}/${jobId}_pid`;
+		const fullCmd = `mkfifo ${guestDir}/${jobId}_fifo; (${cwdCmd}; stdbuf -o0 ${cmd} <> ${guestDir}/${jobId}_fifo > ${guestDir}/${jobId}_out 2>&1; echo $? > ${guestDir}/${jobId}_exit; pwd > ${guestDir}/${jobId}_cwd; pwd > ${shell.workDir}/cwd) & echo $! > ${guestDir}/${jobId}_pid`;
 
 		this.emulator.serial0_send(fullCmd + '\n');
 

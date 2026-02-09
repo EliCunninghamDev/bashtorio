@@ -210,6 +210,20 @@
     "url": "https://github.com/evanw/esbuild"
   },
   {
+    "name": "@fontsource/ibm-plex-mono",
+    "version": "5.2.7",
+    "license": "OFL-1.1",
+    "author": "Google Inc.",
+    "url": "https://fontsource.org/fonts/ibm-plex-mono"
+  },
+  {
+    "name": "@fontsource/jetbrains-mono",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "author": "Google Inc.",
+    "url": "https://fontsource.org/fonts/jetbrains-mono"
+  },
+  {
     "name": "@img/colour",
     "version": "1.0.0",
     "license": "MIT",
@@ -1601,6 +1615,13 @@
     "license": "ISC",
     "author": "Isaac Z. Schlueter <i@izs.me>",
     "url": "https://github.com/isaacs/node-lru-cache"
+  },
+  {
+    "name": "lucide-static",
+    "version": "0.563.0",
+    "license": "ISC",
+    "author": "",
+    "url": "https://lucide.dev"
   },
   {
     "name": "magic-string",
