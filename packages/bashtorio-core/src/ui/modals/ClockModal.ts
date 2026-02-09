@@ -39,7 +39,7 @@ export class ClockModal extends BaseModal {
   configure(machine: ClockMachine) {
     this.machine = machine;
     this.byteInput.setValue(machine.clockByte);
-    this.qs<HTMLInputElement>('.clock-interval').value = String(machine.emitInterval);
+    this.qs<HTMLInputElement>('.clock-interval').value = String(machine.clock.interval);
     this.show();
     this.byteInput.focus();
   }
@@ -47,7 +47,7 @@ export class ClockModal extends BaseModal {
   protected save() {
     if (this.machine) {
       this.machine.clockByte = this.byteInput.getValue() || '*';
-      this.machine.emitInterval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.clock-interval').value) || 1000);
+      this.machine.clock.interval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.clock-interval').value) || 1000);
     }
     this.hide();
   }

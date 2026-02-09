@@ -4,6 +4,7 @@ import { resolve } from 'path';
 const coreRoot = resolve(import.meta.dirname, '../../packages/bashtorio-core');
 
 export default defineConfig({
+  site: 'https://bashtorio.xyz',
   vite: {
     resolve: {
       alias: {

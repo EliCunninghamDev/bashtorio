@@ -150,15 +150,19 @@ export class LinuxVM {
 			if (vmSnapshot) {
 				onStatus('Restoring state...');
 				setTimeout(async () => {
-					if (this._networkRelay) {
-						onStatus('Configuring network...');
-						this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-						await this.sleep(2000);
+					try {
+						if (this._networkRelay) {
+							onStatus('Configuring network...');
+							this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
+							await this.sleep(2000);
+						}
+						this._ready = true;
+						onStatus('State loaded, ready!');
+						await this.mount9p(onStatus);
+						resolve();
+					} catch (err) {
+						reject(err);
 					}
-					this._ready = true;
-					onStatus('State loaded, ready!');
-					await this.mount9p(onStatus);
-					resolve();
 				}, 1000);
 			}
 
@@ -183,22 +187,26 @@ export class LinuxVM {
 						booted = true;
 						onStatus('Configuring...');
 						setTimeout(async () => {
-							this.emulator!.serial0_send('stty -echo\n');
-							await this.sleep(100);
-							this.emulator!.serial0_send('PS1=""\n');
-							await this.sleep(100);
-							this.emulator!.serial0_send('mkdir -p /tmp/bashtorio\n');
-							await this.sleep(100);
+							try {
+								this.emulator!.serial0_send('stty -echo\n');
+								await this.sleep(100);
+								this.emulator!.serial0_send('PS1=""\n');
+								await this.sleep(100);
+								this.emulator!.serial0_send('mkdir -p /tmp/bashtorio\n');
+								await this.sleep(100);
 
-							if (this._networkRelay) {
-								onStatus('Configuring network...');
-								this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-								await this.sleep(2000);
+								if (this._networkRelay) {
+									onStatus('Configuring network...');
+									this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
+									await this.sleep(2000);
+								}
+
+								this._ready = true;
+								await this.mount9p(onStatus);
+								resolve();
+							} catch (err) {
+								reject(err);
 							}
-
-							this._ready = true;
-							await this.mount9p(onStatus);
-							resolve();
 						}, 500);
 					}
 					return;

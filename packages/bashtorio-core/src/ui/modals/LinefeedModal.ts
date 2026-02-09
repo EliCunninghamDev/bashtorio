@@ -30,7 +30,7 @@ export class LinefeedModal extends BaseModal {
 
   configure(machine: LinefeedMachine) {
     this.machine = machine;
-    this.qs<HTMLInputElement>('.lf-interval').value = String(machine.emitInterval);
+    this.qs<HTMLInputElement>('.lf-interval').value = String(machine.clock.interval);
     this.show();
     this.qs<HTMLInputElement>('.lf-interval').focus();
     this.qs<HTMLInputElement>('.lf-interval').select();
@@ -38,7 +38,7 @@ export class LinefeedModal extends BaseModal {
 
   protected save() {
     if (this.machine) {
-      this.machine.emitInterval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.lf-interval').value) || 500);
+      this.machine.clock.interval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.lf-interval').value) || 500);
     }
     this.hide();
   }

@@ -1,3 +1,5 @@
+import type { EmitTimer } from './clock';
+
 // Grid and rendering constants
 export const DEFAULT_GRID_COLS = 32;
 export const DEFAULT_GRID_ROWS = 32;
@@ -36,7 +38,7 @@ export enum MachineType {
   LINEFEED = 'linefeed',
   FLIPPER = 'flipper',
   DUPLICATOR = 'duplicator',
-  CONSTANT = 'constant',
+
   FILTER = 'filter',
   COUNTER = 'counter',
   DELAY = 'delay',
@@ -82,17 +84,13 @@ export interface MachineBase {
   lastCommandTime: number; // flash effect on byte receive
 }
 
-export interface EmitTimer {
-  emitInterval: number;
-  lastEmitTime: number;
-}
-
-export interface SourceMachine extends MachineBase, EmitTimer {
+export interface SourceMachine extends MachineBase {
   type: MachineType.SOURCE;
+  clock: EmitTimer;
+  gapTimer: EmitTimer;
   sourceText: string;
   sourcePos: number;
-  gapInterval: number;
-  gapRemaining: number;
+  loop: boolean;
 }
 
 export const SINK_DRAIN_SLOTS = 12;
@@ -139,8 +137,9 @@ export interface NullMachine extends MachineBase {
   type: MachineType.NULL;
 }
 
-export interface LinefeedMachine extends MachineBase, EmitTimer {
+export interface LinefeedMachine extends MachineBase {
   type: MachineType.LINEFEED;
+  clock: EmitTimer;
 }
 
 export interface FlipperMachine extends MachineBase {
@@ -153,14 +152,6 @@ export interface FlipperMachine extends MachineBase {
 export interface DuplicatorMachine extends MachineBase {
   type: MachineType.DUPLICATOR;
   outputBuffer: string;
-}
-
-export interface ConstantMachine extends MachineBase, EmitTimer {
-  type: MachineType.CONSTANT;
-  constantText: string;
-  constantPos: number;
-  gapInterval: number;
-  gapRemaining: number;
 }
 
 export interface FilterMachine extends MachineBase {
@@ -245,8 +236,9 @@ export interface MathMachine extends MachineBase {
   outputBuffer: string;
 }
 
-export interface ClockMachine extends MachineBase, EmitTimer {
+export interface ClockMachine extends MachineBase {
   type: MachineType.CLOCK;
+  clock: EmitTimer;
   clockByte: string;
 }
 
@@ -301,12 +293,12 @@ export interface ScreenMachine extends MachineBase {
   writePos: number;
 }
 
-export interface ByteMachine extends MachineBase, EmitTimer {
+export interface ByteMachine extends MachineBase {
   type: MachineType.BYTE;
+  clock: EmitTimer;
+  gapTimer: EmitTimer;
   byteData: Uint8Array;
   bytePos: number;
-  gapInterval: number;
-  gapRemaining: number;
 }
 
 export type Machine =
@@ -318,7 +310,6 @@ export type Machine =
   | LinefeedMachine
   | FlipperMachine
   | DuplicatorMachine
-  | ConstantMachine
   | FilterMachine
   | CounterMachine
   | DelayMachine
@@ -349,7 +340,6 @@ export interface MachineByType {
   [MachineType.LINEFEED]: LinefeedMachine;
   [MachineType.FLIPPER]: FlipperMachine;
   [MachineType.DUPLICATOR]: DuplicatorMachine;
-  [MachineType.CONSTANT]: ConstantMachine;
   [MachineType.FILTER]: FilterMachine;
   [MachineType.COUNTER]: CounterMachine;
   [MachineType.DELAY]: DelayMachine;
@@ -395,10 +385,10 @@ export function hasOutputBuffer(m: Machine): m is BufferingMachine {
   return 'outputBuffer' in m;
 }
 
-export type EmittingMachine = SourceMachine | LinefeedMachine | ConstantMachine | ClockMachine | ByteMachine;
+export type EmittingMachine = SourceMachine | LinefeedMachine | ClockMachine | ByteMachine;
 
-export function hasEmitTimer(m: Machine): m is EmittingMachine {
-  return 'emitInterval' in m;
+export function hasClock(m: Machine): m is EmittingMachine {
+  return 'clock' in m;
 }
 
 export interface Packet {
@@ -413,7 +403,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte';
 
 export interface OrphanedPacket {
 	id: number;

@@ -457,10 +457,10 @@ function createMMLTonePreset(): SaveData {
       { x: 6, y: 2, type: 'machine', machineIdx: 5 },
     ],
     machines: [
-      { x: 0, y: 0, type: MachineType.CONSTANT, command: '', autoStart: false, sinkId: 0, emitInterval: 75, constantText: melody },
+      { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: melody, loop: true },
       { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
       { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square' },
-      { x: 0, y: 2, type: MachineType.CONSTANT, command: '', autoStart: false, sinkId: 0, emitInterval: 75, constantText: bass },
+      { x: 0, y: 2, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: bass, loop: true },
       { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
       { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
     ],

@@ -1,9 +1,10 @@
 /* Bashtorio Game Styles */
 
 .bashtorio-root {
+  --font-mono: 'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
   width: 100%;
   height: 100%;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'JetBrains Mono', 'Segoe UI', system-ui, sans-serif;
   background: var(--ui-bg, #1a1a2e);
   color: var(--ui-fg, #eee);
 }
@@ -47,7 +48,7 @@
   align-items: center;
   margin-right: 16px;
   user-select: none;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .bashtorio-ingame-logo-sh {
@@ -55,7 +56,7 @@
 }
 
 .boot-title {
- font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+ font-family: var(--font-mono);
 }
 
 .boot-terminal-cursor {
@@ -71,7 +72,7 @@
   color: #fff;
   margin-bottom: 20px;
   font-size: 1rem;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-mono);
   margin-bottom: 40px;
 }
 
@@ -102,6 +103,55 @@
   padding: 8px;
   height: 100%;
   overflow: hidden;
+}
+
+/* Boot Error */
+.boot-error {
+  text-align: center;
+  max-width: 500px;
+  padding: 30px;
+}
+
+.boot-error-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #e05050;
+  margin-bottom: 16px;
+}
+
+.boot-error-detail {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: #aaa;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  word-break: break-word;
+}
+
+.boot-error-suggestion {
+  font-size: 0.9rem;
+  color: #999;
+  margin-bottom: 24px;
+  line-height: 1.4;
+}
+
+.boot-error-retry {
+  padding: 10px 24px;
+  background: transparent;
+  border: 2px solid #00ff41;
+  border-radius: 6px;
+  color: #00ff41;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.boot-error-retry:hover {
+  background: #00ff41;
+  color: #000;
 }
 
 /* Game Container */
@@ -245,7 +295,7 @@
 }
 
 .stat-value {
-	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-family: var(--font-mono);
 	font-size: 0.8rem;
 	font-variant-numeric: tabular-nums;
 	color: var(--ui-accent, #00d9ff);
@@ -264,7 +314,7 @@
 
 .stream-entries {
   padding: 6px 10px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 
@@ -331,7 +381,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: 6px 10px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   scrollbar-width: none;
 }
@@ -514,7 +564,7 @@
 .sink-output {
   padding: 12px;
   background: #000;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.4;
   white-space: pre;
@@ -577,7 +627,7 @@
   background: transparent;
   border: none;
   color: var(--ui-fg-secondary, #ccc);
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   resize: none;
 }
@@ -1207,7 +1257,7 @@
   background: var(--ui-bg-deep, #0a0a1a);
   border: 1px solid var(--ui-border, #333);
   border-radius: 6px;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--ui-fg, #fff);
   word-break: break-all;
@@ -1261,7 +1311,7 @@
 /* Command modal: dark terminal bg + monospace */
 .cmd-terminal {
   background: var(--ui-bg-deep, #0a0a14);
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .machine-panel-header {
@@ -1775,7 +1825,7 @@ textarea.cmd-command {
 	color: var(--ui-accent, #00d9ff);
 	padding: 2px 6px;
 	border-radius: 3px;
-	font-family: 'Cascadia Code', 'Fira Code', monospace;
+	font-family: var(--font-mono);
 	font-size: 0.85rem;
 }
 
@@ -1786,7 +1836,7 @@ textarea.cmd-command {
 	padding: 12px 14px;
 	margin: 10px 0;
 	overflow-x: auto;
-	font-family: 'Cascadia Code', 'Fira Code', monospace;
+	font-family: var(--font-mono);
 	font-size: 0.85rem;
 	line-height: 1.5;
 	color: var(--ui-fg-secondary, #aaa);
@@ -1846,7 +1896,7 @@ textarea.cmd-command {
 .help-body kbd {
 	display: inline-block;
 	padding: 2px 6px;
-	font-family: monospace;
+	font-family: var(--font-mono);
 	font-size: 0.85em;
 	background: rgba(255, 255, 255, 0.1);
 	border: 1px solid var(--ui-border, #444);
@@ -1917,7 +1967,7 @@ textarea.cmd-command {
 }
 
 .byte-input-nibble {
-	font-family: 'Consolas', 'Monaco', monospace;
+	font-family: var(--font-mono);
 	font-size: 1.4rem;
 	font-weight: bold;
 	width: 1.2ch;
@@ -1930,7 +1980,7 @@ textarea.cmd-command {
 }
 
 .byte-input-key-display {
-	font-family: 'Consolas', 'Monaco', monospace;
+	font-family: var(--font-mono);
 	font-size: 1.4rem;
 	font-weight: bold;
 	min-width: 2ch;
@@ -1978,7 +2028,7 @@ textarea.cmd-command {
 
 .byte-input-popover:popover-open {
 	display: grid;
-	grid-template-columns: repeat(6, 1fr);
+	grid-template-columns: repeat(4, 1fr);
 }
 
 .byte-btn {
@@ -2002,14 +2052,14 @@ textarea.cmd-command {
 }
 
 .byte-btn-label {
-	font-family: 'Consolas', 'Monaco', monospace;
+	font-family: var(--font-mono);
 	font-size: 0.75rem;
 	font-weight: 600;
 	line-height: 1;
 }
 
 .byte-btn-hex {
-	font-family: 'Consolas', 'Monaco', monospace;
+	font-family: var(--font-mono);
 	font-size: 0.55rem;
 	color: var(--ui-fg-muted, #666);
 	line-height: 1;
@@ -2072,7 +2122,7 @@ textarea.cmd-command {
 /* Compact variant for symbol-heavy groups (math ops, etc.) */
 .radio-group--compact .radio-option span {
 	padding: 5px 8px;
-	font-family: 'Consolas', 'Monaco', monospace;
+	font-family: var(--font-mono);
 	font-weight: bold;
 }
 
@@ -2190,7 +2240,7 @@ textarea.cmd-command {
 	color: var(--ui-fg-muted, #888);
 	min-width: 2.5ch;
 	text-align: center;
-	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-family: var(--font-mono);
 }
 
 .hex-col-btn {
@@ -2221,7 +2271,7 @@ textarea.cmd-command {
 }
 
 .hex-display {
-	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-family: var(--font-mono);
 	font-size: 12px;
 	line-height: 1.8;
 	background: var(--ui-bg-input, #0a0a14);
@@ -2312,33 +2362,4 @@ textarea.cmd-command {
 	gap: 4px;
 }
 
-.hex-quick-btn {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	background: var(--ui-bg-element, #2a2a4a);
-	border: 1px solid var(--ui-border, #333);
-	border-radius: 3px;
-	color: var(--ui-fg-secondary, #aaa);
-	font-family: 'Consolas', 'Monaco', monospace;
-	font-size: 11px;
-	padding: 4px 8px;
-	cursor: pointer;
-	transition: border-color 0.1s, background 0.1s;
-	line-height: 1.3;
-}
-
-.hex-quick-btn:hover {
-	border-color: var(--ui-border-light, #5a5a7a);
-	background: var(--ui-bg-surface, #1e1e32);
-}
-
-.hex-quick-label {
-	font-weight: 600;
-}
-
-.hex-quick-hex {
-	font-size: 9px;
-	color: var(--ui-fg-muted, #555);
-}
 

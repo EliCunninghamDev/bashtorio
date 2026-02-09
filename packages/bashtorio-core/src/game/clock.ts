@@ -6,3 +6,29 @@ export function tick(): void {
   delta = now > 0 ? t - now : 0;
   now = t;
 }
+
+export class EmitTimer {
+  interval: number;
+  timeRemaining: number;
+
+  constructor(interval: number) {
+    this.interval = interval;
+    this.timeRemaining = interval;
+  }
+
+  advance(dt: number): void {
+    this.timeRemaining -= dt;
+  }
+
+  shouldTick(): boolean {
+    return this.timeRemaining < 0;
+  }
+
+  reset(): void {
+    this.timeRemaining = this.interval;
+  }
+
+  start(advance: number = 0): void {
+    this.timeRemaining = this.interval - advance;
+  }
+}

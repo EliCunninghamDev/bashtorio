@@ -17,7 +17,7 @@ const KEY_TO_PLACEABLE: Record<string, PlaceableType> = {
   c: 'linefeed',
   v: 'flipper',
   d: 'duplicator',
-  t: 'constant',
+
   g: 'filter',
   n: 'counter',
   b: 'delay',

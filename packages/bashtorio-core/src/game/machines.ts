@@ -1,4 +1,5 @@
 import { MachineType, Direction, type Machine, type MachineByType, type MachineBase } from './types';
+import { EmitTimer } from './clock';
 
 export const machines: Machine[] = [];
 let sinkIdCounter = 1;
@@ -19,7 +20,7 @@ export function clearMachines(): void {
 export type MachineDefaults<T extends MachineType> = Omit<MachineByType[T], keyof MachineBase | 'type'>;
 
 export function sourceDefaults(): MachineDefaults<MachineType.SOURCE> {
-  return { sourceText: 'Hello World!\n', sourcePos: 0, emitInterval: 500, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
+  return { sourceText: 'Hello World!\n', sourcePos: 0, clock: new EmitTimer(500), gapTimer: new EmitTimer(0), loop: true };
 }
 
 export function sinkDefaults(): MachineDefaults<MachineType.SINK> {
@@ -41,7 +42,7 @@ export function displayDefaults(): MachineDefaults<MachineType.DISPLAY> {
 }
 
 export function linefeedDefaults(): MachineDefaults<MachineType.LINEFEED> {
-  return { emitInterval: 500, lastEmitTime: 0 };
+  return { clock: new EmitTimer(500) };
 }
 
 export function flipperDefaults(dir: Direction): MachineDefaults<MachineType.FLIPPER> {
@@ -50,10 +51,6 @@ export function flipperDefaults(dir: Direction): MachineDefaults<MachineType.FLI
 
 export function duplicatorDefaults(): MachineDefaults<MachineType.DUPLICATOR> {
   return { outputBuffer: '' };
-}
-
-export function constantDefaults(): MachineDefaults<MachineType.CONSTANT> {
-  return { constantText: 'hello\n', emitInterval: 500, constantPos: 0, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
 }
 
 export function filterDefaults(): MachineDefaults<MachineType.FILTER> {
@@ -101,7 +98,7 @@ export function mathDefaults(): MachineDefaults<MachineType.MATH> {
 }
 
 export function clockDefaults(): MachineDefaults<MachineType.CLOCK> {
-  return { clockByte: '*', emitInterval: 1000, lastEmitTime: 0 };
+  return { clockByte: '*', clock: new EmitTimer(1000) };
 }
 
 export function latchDefaults(): MachineDefaults<MachineType.LATCH> {
@@ -134,7 +131,7 @@ export function screenDefaults(): MachineDefaults<MachineType.SCREEN> {
 }
 
 export function byteDefaults(): MachineDefaults<MachineType.BYTE> {
-  return { byteData: new Uint8Array(0), bytePos: 0, emitInterval: 500, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
+  return { byteData: new Uint8Array(0), bytePos: 0, clock: new EmitTimer(500), gapTimer: new EmitTimer(0) };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +150,7 @@ export function createMachine(x: number, y: number, machineType: MachineType, di
     case MachineType.LINEFEED:   return { ...base, type: MachineType.LINEFEED, ...linefeedDefaults() };
     case MachineType.FLIPPER:    return { ...base, type: MachineType.FLIPPER, ...flipperDefaults(dir) };
     case MachineType.DUPLICATOR: return { ...base, type: MachineType.DUPLICATOR, ...duplicatorDefaults() };
-    case MachineType.CONSTANT:   return { ...base, type: MachineType.CONSTANT, ...constantDefaults() };
+
     case MachineType.FILTER:     return { ...base, type: MachineType.FILTER, ...filterDefaults() };
     case MachineType.COUNTER:    return { ...base, type: MachineType.COUNTER, ...counterDefaults() };
     case MachineType.DELAY:      return { ...base, type: MachineType.DELAY, ...delayDefaults() };

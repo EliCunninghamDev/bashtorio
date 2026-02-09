@@ -6,13 +6,14 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "deploy": "wrangler pages deploy"
+    "deploy": "rm -f dist/v86/alpine-state.bin && wrangler pages deploy"
   },
   "dependencies": {
     "astro": "^4.0.0",
     "bashtorio-core": "workspace:*"
   },
   "devDependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "wrangler": "^4.63.0"
   }
 }

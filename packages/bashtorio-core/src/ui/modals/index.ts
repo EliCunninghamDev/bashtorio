@@ -13,7 +13,7 @@ import './ReplaceModal';
 import './GateModal';
 import './LatchModal';
 import './MathModal';
-import './ConstantModal';
+
 import './SourceModal';
 import './CommandModal';
 import './ToneModal';
@@ -43,7 +43,7 @@ import type { ReplaceModal } from './ReplaceModal';
 import type { GateModal } from './GateModal';
 import type { LatchModal } from './LatchModal';
 import type { MathModal } from './MathModal';
-import type { ConstantModal } from './ConstantModal';
+
 import type { SourceModal } from './SourceModal';
 import type { CommandModal } from './CommandModal';
 import type { ToneModal } from './ToneModal';
@@ -78,7 +78,7 @@ export function setupModals(
   const sourceModal = container.querySelector('bt-source-modal') as SourceModal;
   const linefeedModal = container.querySelector('bt-linefeed-modal') as LinefeedModal;
   const flipperModal = container.querySelector('bt-flipper-modal') as FlipperModal;
-  const constantModal = container.querySelector('bt-constant-modal') as ConstantModal;
+
   const filterModal = container.querySelector('bt-filter-modal') as FilterModal;
   const counterModal = container.querySelector('bt-counter-modal') as CounterModal;
   const delayModal = container.querySelector('bt-delay-modal') as DelayModal;
@@ -129,9 +129,6 @@ export function setupModals(
         break;
       case MachineType.FLIPPER:
         flipperModal.configure(machine);
-        break;
-      case MachineType.CONSTANT:
-        constantModal.configure(machine);
         break;
       case MachineType.FILTER:
         filterModal.configure(machine);

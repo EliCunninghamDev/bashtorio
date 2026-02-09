@@ -1,3 +1,5 @@
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/600.css';
 import { mount, type BashtorioInstance } from 'bashtorio-core';
 
 declare global {

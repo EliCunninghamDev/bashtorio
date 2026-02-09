@@ -65,7 +65,6 @@ export function startSimulation(state: GameState): void {
   if (state.running) return;
 
   state.running = true;
-  state.lastEmitTime = now;
   state.packets = [];
   state.orphanedPackets = [];
 
@@ -74,8 +73,8 @@ export function startSimulation(state: GameState): void {
     switch (machine.type) {
       case MachineType.SOURCE:
         machine.sourcePos = 0;
-        machine.lastEmitTime = 0;
-        machine.gapRemaining = 0;
+        machine.clock.reset();
+        machine.gapTimer.timeRemaining = 0;
         break;
       case MachineType.SINK:
         machine.drainRing = [];
@@ -109,11 +108,6 @@ export function startSimulation(state: GameState): void {
       case MachineType.UNPACKER:
         machine.outputBuffer = '';
         break;
-      case MachineType.CONSTANT:
-        machine.constantPos = 0;
-        machine.lastEmitTime = 0;
-        machine.gapRemaining = 0;
-        break;
       case MachineType.COUNTER:
         machine.counterCount = 0;
         machine.outputBuffer = '';
@@ -123,7 +117,7 @@ export function startSimulation(state: GameState): void {
         machine.outputBuffer = '';
         break;
       case MachineType.LINEFEED:
-        machine.lastEmitTime = 0;
+        machine.clock.reset();
         break;
       case MachineType.PACKER:
         machine.accumulatedBuffer = '';
@@ -157,7 +151,7 @@ export function startSimulation(state: GameState): void {
         machine.outputBuffer = '';
         break;
       case MachineType.CLOCK:
-        machine.lastEmitTime = 0;
+        machine.clock.reset();
         break;
       case MachineType.LATCH:
         machine.latchStored = '';
@@ -178,8 +172,8 @@ export function startSimulation(state: GameState): void {
         break;
       case MachineType.BYTE:
         machine.bytePos = 0;
-        machine.lastEmitTime = 0;
-        machine.gapRemaining = 0;
+        machine.clock.reset();
+        machine.gapTimer.timeRemaining = 0;
         break;
       // SINK, NULL - no runtime state to reset
     }
@@ -829,49 +823,101 @@ function emitFromSplitter(state: GameState, machine: SplitterMachine): boolean {
 }
 
 function emitFromMachine(state: GameState, machine: Machine): boolean {
-  const output = findMachineOutput(machine);
-  if (!output) return false;
+  const dt = delta * state.timescale;
 
-  if (!isCellEmpty(state, output.x, output.y)) return false;
+  // --- Timer machines: advance clock before checking output ---
 
   if (machine.type === MachineType.SOURCE) {
     if (machine.sourceText.length === 0) return false;
-    // Gap pause: count down before restarting the loop
-    if (machine.gapRemaining > 0) {
-      machine.gapRemaining -= delta * state.timescale;
-      return false;
+    if (machine.sourcePos >= machine.sourceText.length) return false;
+    if (machine.gapTimer.timeRemaining > 0) {
+      machine.gapTimer.advance(dt);
+      if (!machine.gapTimer.shouldTick()) return false;
+      machine.clock.start(-machine.gapTimer.timeRemaining);
+    } else {
+      machine.clock.advance(dt);
     }
-    if (machine.sourcePos < machine.sourceText.length) {
-      const char = machine.sourceText[machine.sourcePos];
-      createPacket(state, output.x, output.y, char, output.dir);
-      machine.sourcePos++;
-      // If we just finished and there's a gap, enter gap pause then reset
-      if (machine.sourcePos >= machine.sourceText.length && machine.gapInterval > 0) {
-        machine.gapRemaining = machine.gapInterval;
+    if (!machine.clock.shouldTick()) return false;
+    const output = findMachineOutput(machine);
+    if (!output || !isCellEmpty(state, output.x, output.y)) return false;
+    const char = machine.sourceText[machine.sourcePos];
+    createPacket(state, output.x, output.y, char, output.dir);
+    const drift = -machine.clock.timeRemaining;
+    machine.sourcePos++;
+    if (machine.sourcePos >= machine.sourceText.length) {
+      if (machine.loop) {
         machine.sourcePos = 0;
+        if (machine.gapTimer.interval > 0) {
+          machine.gapTimer.start(drift);
+          return true;
+        }
       }
+    }
+    machine.clock.start(drift);
+    return true;
+  }
+
+  if (machine.type === MachineType.LINEFEED) {
+    machine.clock.advance(dt);
+    if (!machine.clock.shouldTick()) return false;
+    const output = findMachineOutput(machine);
+    if (!output || !isCellEmpty(state, output.x, output.y)) return false;
+    createPacket(state, output.x, output.y, '\n', output.dir);
+    machine.clock.start(-machine.clock.timeRemaining);
+    return true;
+  }
+
+  if (machine.type === MachineType.CLOCK) {
+    machine.clock.advance(dt);
+    if (!machine.clock.shouldTick()) return false;
+    const output = findMachineOutput(machine);
+    if (!output || !isCellEmpty(state, output.x, output.y)) return false;
+    createPacket(state, output.x, output.y, machine.clockByte, output.dir);
+    machine.clock.start(-machine.clock.timeRemaining);
+    return true;
+  }
+
+  if (machine.type === MachineType.BYTE) {
+    if (machine.byteData.length === 0) return false;
+    if (machine.gapTimer.timeRemaining > 0) {
+      machine.gapTimer.advance(dt);
+      if (!machine.gapTimer.shouldTick()) return false;
+      machine.clock.start(-machine.gapTimer.timeRemaining);
+    } else {
+      machine.clock.advance(dt);
+    }
+    if (!machine.clock.shouldTick()) return false;
+    const output = findMachineOutput(machine);
+    if (!output || !isCellEmpty(state, output.x, output.y)) return false;
+    const char = String.fromCharCode(machine.byteData[machine.bytePos]);
+    createPacket(state, output.x, output.y, char, output.dir);
+    const drift = -machine.clock.timeRemaining;
+    machine.bytePos = (machine.bytePos + 1) % machine.byteData.length;
+    if (machine.bytePos === 0 && machine.gapTimer.interval > 0) {
+      machine.gapTimer.start(drift);
       return true;
     }
-  } else if (machine.type === MachineType.COMMAND) {
+    machine.clock.start(drift);
+    return true;
+  }
+
+  // --- Buffering machines: emit freely when output is clear ---
+
+  const output = findMachineOutput(machine);
+  if (!output) return false;
+  if (!isCellEmpty(state, output.x, output.y)) return false;
+
+  if (machine.type === MachineType.COMMAND) {
     if (machine.outputBuffer.length > 0) {
       const char = machine.outputBuffer[0];
       machine.outputBuffer = machine.outputBuffer.slice(1);
       createPacket(state, output.x, output.y, char, output.dir);
-
-      return true;
-    }
-  } else if (machine.type === MachineType.LINEFEED) {
-    const adjustedDelay = machine.emitInterval / state.timescale;
-    if (now - machine.lastEmitTime > adjustedDelay) {
-      createPacket(state, output.x, output.y, '\n', output.dir);
-      machine.lastEmitTime += adjustedDelay;
       return true;
     }
   } else if (machine.type === MachineType.DUPLICATOR) {
     if (machine.outputBuffer.length > 0) {
       const outputs = findFlipperOutputs(machine);
       if (outputs.length === 0) return false;
-      // Only emit when ALL output cells are clear
       for (const o of outputs) {
         if (!isCellEmpty(state, o.x, o.y)) return false;
       }
@@ -885,36 +931,14 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
   } else if (machine.type === MachineType.FLIPPER) {
     if (machine.outputQueue.length > 0) {
       const dir = machine.flipperState as Direction;
-      const delta = DirDelta[dir];
-      const nx = machine.x + delta.dx;
-      const ny = machine.y + delta.dy;
+      const d = DirDelta[dir];
+      const nx = machine.x + d.dx;
+      const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type !== CellType.BELT || (cell as BeltCell).dir !== dir) return false;
       if (!isCellEmpty(state, nx, ny)) return false;
       const packet = machine.outputQueue.shift()!;
       createPacket(state, nx, ny, packet, dir);
-      return true;
-    }
-  } else if (machine.type === MachineType.CONSTANT) {
-    if (machine.constantText.length === 0) return false;
-    // Gap pause: count down before restarting the loop
-    if (machine.gapRemaining > 0) {
-      machine.gapRemaining -= delta * state.timescale;
-      if (machine.gapRemaining > 0) return false;
-      // gapRemaining is negative = overshoot past gap end; fold into baseline
-      machine.lastEmitTime = now + machine.gapRemaining;
-      machine.gapRemaining = 0;
-    }
-    const adjustedDelay = machine.emitInterval / state.timescale;
-    if (now - machine.lastEmitTime > adjustedDelay) {
-      const char = machine.constantText[machine.constantPos];
-      createPacket(state, output.x, output.y, char, output.dir);
-      machine.constantPos = (machine.constantPos + 1) % machine.constantText.length;
-      machine.lastEmitTime += adjustedDelay;
-      // If we just wrapped around and there's a gap, enter gap pause
-      if (machine.constantPos === 0 && machine.gapInterval > 0) {
-        machine.gapRemaining = machine.gapInterval;
-      }
       return true;
     }
   } else if (machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD || machine.type === MachineType.UNPACKER) {
@@ -927,9 +951,9 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
   } else if (machine.type === MachineType.PACKER) {
     if (machine.outputBuffer.length > 0) {
       const dir = machine.packerDir;
-      const delta = DirDelta[dir];
-      const nx = machine.x + delta.dx;
-      const ny = machine.y + delta.dy;
+      const d = DirDelta[dir];
+      const nx = machine.x + d.dx;
+      const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type !== CellType.BELT || (cell as BeltCell).dir !== dir) return false;
       if (!isCellEmpty(state, nx, ny)) return false;
@@ -938,13 +962,12 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       return true;
     }
   } else if (machine.type === MachineType.ROUTER) {
-    // Dual-buffer directional emit
     let emitted = false;
     if (machine.matchBuffer.length > 0) {
       const dir = machine.routerMatchDir;
-      const delta = DirDelta[dir];
-      const nx = machine.x + delta.dx;
-      const ny = machine.y + delta.dy;
+      const d = DirDelta[dir];
+      const nx = machine.x + d.dx;
+      const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type === CellType.BELT && (cell as BeltCell).dir === dir && isCellEmpty(state, nx, ny)) {
         const char = machine.matchBuffer[0];
@@ -955,9 +978,9 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
     }
     if (machine.elseBuffer.length > 0) {
       const dir = machine.routerElseDir;
-      const delta = DirDelta[dir];
-      const nx = machine.x + delta.dx;
-      const ny = machine.y + delta.dy;
+      const d = DirDelta[dir];
+      const nx = machine.x + d.dx;
+      const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type === CellType.BELT && (cell as BeltCell).dir === dir && isCellEmpty(state, nx, ny)) {
         const char = machine.elseBuffer[0];
@@ -967,36 +990,6 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       }
     }
     return emitted;
-  } else if (machine.type === MachineType.CLOCK) {
-    const adjustedDelay = machine.emitInterval / state.timescale;
-    if (now - machine.lastEmitTime > adjustedDelay) {
-      const output = findMachineOutput(machine);
-      if (!output) return false;
-      if (!isCellEmpty(state, output.x, output.y)) return false;
-      createPacket(state, output.x, output.y, machine.clockByte, output.dir);
-      machine.lastEmitTime += adjustedDelay;
-      return true;
-    }
-  } else if (machine.type === MachineType.BYTE) {
-    if (machine.byteData.length === 0) return false;
-    // Gap pause: count down before restarting the loop
-    if (machine.gapRemaining > 0) {
-      machine.gapRemaining -= delta * state.timescale;
-      if (machine.gapRemaining > 0) return false;
-      machine.lastEmitTime = now + machine.gapRemaining;
-      machine.gapRemaining = 0;
-    }
-    const adjustedDelay = machine.emitInterval / state.timescale;
-    if (now - machine.lastEmitTime > adjustedDelay) {
-      const char = String.fromCharCode(machine.byteData[machine.bytePos]);
-      createPacket(state, output.x, output.y, char, output.dir);
-      machine.bytePos = (machine.bytePos + 1) % machine.byteData.length;
-      machine.lastEmitTime += adjustedDelay;
-      if (machine.bytePos === 0 && machine.gapInterval > 0) {
-        machine.gapRemaining = machine.gapInterval;
-      }
-      return true;
-    }
   } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.REPLACE || machine.type === MachineType.MATH || machine.type === MachineType.LATCH || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
     if (machine.outputBuffer.length > 0) {
       const char = machine.outputBuffer[0];
@@ -1018,23 +1011,9 @@ export function updateSimulation(
 ): void {
   if (!state.running) return;
 
-  // Emit from source, command, and buffering machines
-  const adjustedDelay = state.emitDelay / state.timescale;
-  if (now - state.lastEmitTime > adjustedDelay) {
-    for (const machine of machines) {
-      if (machine.type === MachineType.SOURCE || machine.type === MachineType.COMMAND || machine.type === MachineType.FLIPPER || machine.type === MachineType.DUPLICATOR || machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD || machine.type === MachineType.PACKER || machine.type === MachineType.UNPACKER || machine.type === MachineType.ROUTER || machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.REPLACE || machine.type === MachineType.MATH || machine.type === MachineType.LATCH || machine.type === MachineType.SPLITTER || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
-        if (emitFromMachine(state, machine)) {
-          state.lastEmitTime += adjustedDelay;
-        }
-      }
-    }
-  }
-
-  // Linefeed, constant, and clock machines emit on their own timer
+  // Emit from all machines — each checks its own clock or emits freely
   for (const machine of machines) {
-    if (machine.type === MachineType.LINEFEED || machine.type === MachineType.CONSTANT || machine.type === MachineType.CLOCK || machine.type === MachineType.BYTE) {
-      emitFromMachine(state, machine);
-    }
+    emitFromMachine(state, machine);
   }
 
   // Process delay queues: move ready items to outputBuffer

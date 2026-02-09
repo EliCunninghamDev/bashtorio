@@ -1,7 +1,7 @@
 import { html } from 'lit-html';
 import { BaseModal } from './BaseModal';
 import { THEMES, getThemeById, applyUITheme } from '../../util/themes';
-import { applyRendererTheme } from '../../render/renderer';
+import { applyRendererTheme, setPhotoTextures } from '../../render/renderer';
 import { loadSettings, saveSettings, type Settings } from '../../util/settings';
 import { setAmbientVolume, setMachineVolume } from '../../audio/SoundSystem';
 
@@ -19,6 +19,9 @@ export class SettingsModal extends BaseModal {
     if (this.root) applyUITheme(this.root, initialTheme);
     document.body.style.background = initialTheme.uiBg;
 
+    // Apply initial photo textures setting
+    setPhotoTextures(this.settings.photoTextures);
+
     // Set initial values
     if (this.isConnected) {
       this.qs<HTMLSelectElement>('.theme-select').value = this.settings.theme;
@@ -28,6 +31,7 @@ export class SettingsModal extends BaseModal {
       this.qs<HTMLElement>('.ambient-vol-value').textContent = Math.round(this.settings.ambientVolume * 100) + '%';
       machineSlider.value = String(this.settings.machineVolume);
       this.qs<HTMLElement>('.machine-vol-value').textContent = Math.round(this.settings.machineVolume * 100) + '%';
+      this.qs<HTMLInputElement>('.photo-textures-check').checked = this.settings.photoTextures;
     }
   }
 
@@ -47,6 +51,12 @@ export class SettingsModal extends BaseModal {
         <div class="form-group">
           <label>Machine Volume: <span class="machine-vol-value">100%</span></label>
           <input type="range" class="styled-slider machine-vol-slider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="form-group">
+          <label class="machine-panel-check">
+            <input type="checkbox" class="photo-textures-check" checked>
+            <span>Photo Textures (WIP)</span>
+          </label>
         </div>
         <div class="modal-buttons">
           <button class="ack-open-btn">Acknowledgements</button>
@@ -84,6 +94,13 @@ export class SettingsModal extends BaseModal {
       setMachineVolume(vol);
       this.qs<HTMLElement>('.machine-vol-value').textContent = Math.round(vol * 100) + '%';
       this.settings.machineVolume = vol;
+      saveSettings(this.settings);
+    });
+
+    this.qs<HTMLInputElement>('.photo-textures-check').addEventListener('change', () => {
+      const enabled = this.qs<HTMLInputElement>('.photo-textures-check').checked;
+      setPhotoTextures(enabled);
+      this.settings.photoTextures = enabled;
       saveSettings(this.settings);
     });
   }

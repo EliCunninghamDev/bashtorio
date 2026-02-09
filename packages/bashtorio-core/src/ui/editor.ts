@@ -14,7 +14,7 @@ const PLACEABLE_TO_MACHINE: Partial<Record<PlaceableType, MachineType>> = {
     null: MachineType.NULL,
     linefeed: MachineType.LINEFEED,
     duplicator: MachineType.DUPLICATOR,
-    constant: MachineType.CONSTANT,
+
     filter: MachineType.FILTER,
     counter: MachineType.COUNTER,
     delay: MachineType.DELAY,
@@ -43,7 +43,7 @@ const CONFIG_ON_PLACE = new Set<MachineType>([
     MachineType.COMMAND,
     MachineType.SOURCE,
     MachineType.FLIPPER,
-    MachineType.CONSTANT,
+
     MachineType.FILTER,
     MachineType.COUNTER,
     MachineType.DELAY,

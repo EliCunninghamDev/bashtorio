@@ -1,4 +1,5 @@
 import { formatBytes } from '../util/format';
+import { CTRL_NAMES } from '../util/bytes';
 import { type RGB, rgb, lerpRgb, rgbCSS } from '../util/colors';
 import {
   GRID_SIZE,
@@ -24,7 +25,6 @@ import {
   type DelayMachine,
   type FilterMachine,
   type LinefeedMachine,
-  type ConstantMachine,
   type DuplicatorMachine,
   type KeyboardMachine,
   type UnpackerMachine,
@@ -176,11 +176,12 @@ let FLASH_B = 0x33;
 // Fonts
 // ---------------------------------------------------------------------------
 
-const FONT_LABEL          = '11px system-ui, sans-serif';
-const FONT_PACKET         = '12px Consolas, monospace';
-const FONT_PACKET_TINY    = '7px system-ui';
-const FONT_PACKET_SMALL   = '8px system-ui';
-const FONT_TOOLTIP        = '12px Consolas, monospace';
+const MONO = "'JetBrains Mono', Consolas, monospace";
+const FONT_LABEL          = `11px ${MONO}`;
+const FONT_PACKET         = `12px ${MONO}`;
+const FONT_PACKET_TINY    = `7px ${MONO}`;
+const FONT_PACKET_SMALL   = `8px ${MONO}`;
+const FONT_TOOLTIP        = `12px ${MONO}`;
 const FONT_BUBBLE         = '14px "Segoe UI Emoji", "Noto Color Emoji", system-ui';
 
 // ---------------------------------------------------------------------------
@@ -196,7 +197,7 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.LINEFEED]: { bg: '#2a4a5a', border: '#4a8aaa', text: '#ccc' },
   [MachineType.FLIPPER]:    { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
   [MachineType.DUPLICATOR]: { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
-  [MachineType.CONSTANT]:   { bg: '#2a5a4a', border: '#4a9a7a', text: '#ccc' },
+
   [MachineType.FILTER]:     { bg: '#3a3a2a', border: '#7a7a4a', text: '#ccc' },
   [MachineType.COUNTER]:    { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
   [MachineType.DELAY]:      { bg: '#4a3a3a', border: '#7a5a5a', text: '#ccc' },
@@ -235,14 +236,11 @@ const WIRELESS_CHANNEL_PACKED: RGB[] = [
 // Control-character name table (allocated once)
 // ---------------------------------------------------------------------------
 
-const CTRL_NAMES = [
-  'NUL', 'SOH', 'STX', 'ETX', 'EOT', 'ENQ', 'ACK', 'BEL',
-  'BS',  'TAB', 'LF',  'VT',  'FF',  'CR',  'SO',  'SI',
-  'DLE', 'DC1', 'DC2', 'DC3', 'DC4', 'NAK', 'SYN', 'ETB',
-  'CAN', 'EM',  'SUB', 'ESC', 'FS',  'GS',  'RS',  'US',
-];
 
 let CLR_FLIPPER_ARROW    = '#4a9a9a';
+
+let usePhotoTextures = false;
+export function setPhotoTextures(enabled: boolean): void { usePhotoTextures = enabled; }
 
 // ---------------------------------------------------------------------------
 // Theme application
@@ -309,15 +307,25 @@ function clamp(n: number, lo: number, hi: number): number {
 // Renderer
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Sprite loading helper
+// ---------------------------------------------------------------------------
+
+function loadSprite(src: string): HTMLImageElement {
+  const img = new Image();
+  img.src = src;
+  return img;
+}
+
 export interface RendererConfig {
   canvas: HTMLCanvasElement;
+  spriteBase?: string;
 }
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private hoveredMachine: Machine | null = null;
-  private timescale = 1;
   /** Mouse position in world pixels (already inverse-camera-transformed). */
   private mouseX = 0;
   private mouseY = 0;
@@ -325,9 +333,23 @@ export class Renderer {
   hoverCol = -1;
   hoverRow = -1;
 
+  private sprites: Map<MachineType, HTMLImageElement>;
+
   constructor(config: RendererConfig) {
     this.canvas = config.canvas;
     this.ctx = config.canvas.getContext('2d')!;
+
+    const base = config.spriteBase ?? '/sprites';
+    const SPRITE_FILES: [MachineType, string][] = [
+      [MachineType.COMMAND, 'terminal.png'],
+      [MachineType.SINK,    'sink.png'],
+      [MachineType.SOURCE,  'tape.png'],
+      [MachineType.BYTE,    'floppy.png'],
+    ];
+    this.sprites = new Map();
+    for (const [type, file] of SPRITE_FILES) {
+      this.sprites.set(type, loadSprite(`${base}/${file}`));
+    }
 
     window.addEventListener('resize', () => this.handleResize());
 
@@ -350,6 +372,18 @@ export class Renderer {
       this.hoveredMachine = null;
       this.mouseOnCanvas = false;
     });
+  }
+
+  private getSprite(type: MachineType): HTMLImageElement | undefined {
+    if (!usePhotoTextures) return undefined;
+    const img = this.sprites.get(type);
+    return img?.complete ? img : undefined;
+  }
+
+  private drawPreviewSprite(col: number, row: number, type: MachineType, label: string): void {
+    const s = this.getSprite(type);
+    if (s) this.ctx.drawImage(s, gx(col), gy(row), GRID_SIZE, GRID_SIZE);
+    else this.drawMachineBox(col, row, type, label);
   }
 
   updateCursor(mode: CursorMode): void {
@@ -377,7 +411,6 @@ export class Renderer {
   }
 
   render(state: GameState): void {
-    this.timescale = state.timescale;
     const ctx = this.ctx;
 
     // Sync canvas size into camera module
@@ -503,13 +536,13 @@ export class Renderer {
         break;
       }
       case 'source':
-        this.drawMachineBox(col, row, MachineType.SOURCE, 'SRC');
+        this.drawPreviewSprite(col, row, MachineType.SOURCE, 'SRC');
         break;
       case 'command':
-        this.drawMachineBox(col, row, MachineType.COMMAND, 'SHL');
+        this.drawPreviewSprite(col, row, MachineType.COMMAND, 'SHL');
         break;
       case 'sink':
-        this.drawMachineBox(col, row, MachineType.SINK, 'SINK');
+        this.drawPreviewSprite(col, row, MachineType.SINK, 'SINK');
         break;
       case 'display':
         this.drawMachineBox(col, row, MachineType.DISPLAY, 'UTF8');
@@ -526,9 +559,6 @@ export class Renderer {
         break;
       case 'duplicator':
         this.drawMachineBox(col, row, MachineType.DUPLICATOR, 'DUP');
-        break;
-      case 'constant':
-        this.drawMachineBox(col, row, MachineType.CONSTANT, 'LOOP');
         break;
       case 'filter':
         this.drawMachineBox(col, row, MachineType.FILTER, 'FLTR');
@@ -588,7 +618,7 @@ export class Renderer {
         this.drawMachineBox(col, row, MachineType.SCREEN, 'SCR');
         break;
       case 'byte':
-        this.drawMachineBox(col, row, MachineType.BYTE, 'BYTE');
+        this.drawPreviewSprite(col, row, MachineType.BYTE, 'BYTE');
         break;
     }
 
@@ -603,7 +633,7 @@ export class Renderer {
     const ctx = this.ctx;
     const label = `${col}, ${row}`;
 
-    ctx.font = '10px Consolas, monospace';
+    ctx.font = `10px ${MONO}`;
     const metrics = ctx.measureText(label);
     const textW = metrics.width;
     const textH = 10;
@@ -969,9 +999,7 @@ export class Renderer {
     const start = -HALF_PI; // 12 o'clock
 
     // Progress arc
-    const adjustedDelay = machine.emitInterval / this.timescale;
-    const elapsed = now - machine.lastEmitTime;
-    const progress = adjustedDelay > 0 ? clamp(elapsed / adjustedDelay, 0, 1) : 0;
+    const progress = machine.clock.interval > 0 ? clamp(1 - machine.clock.timeRemaining / machine.clock.interval, 0, 1) : 0;
 
     ctx.strokeStyle = color.border;
     ctx.lineWidth = 3;
@@ -1107,13 +1135,18 @@ export class Renderer {
     const ctx = this.ctx;
     const color = MACHINE_COLORS[machine.type];
 
-    // Box
-    ctx.fillStyle = color.bg;
-    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    const sprite = this.getSprite(machine.type);
+    if (sprite) {
+      ctx.drawImage(sprite, px, py, GRID_SIZE, GRID_SIZE);
+    } else {
+      // Colored box fallback
+      ctx.fillStyle = color.bg;
+      ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
 
-    ctx.strokeStyle = color.border;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+      ctx.strokeStyle = color.border;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    }
 
     // Auto-start indicator
     if (machine.type === MachineType.COMMAND && machine.autoStart) {
@@ -1154,19 +1187,20 @@ export class Renderer {
     } else {
       let label: string;
       switch (machine.type) {
-        case MachineType.SOURCE:  label = 'SRC';  break;
+        case MachineType.SOURCE:  label = sprite ? '' : 'SRC';  break;
         case MachineType.SINK: {
+          if (sprite) { label = ''; break; }
           const sinkName = (machine as SinkMachine).name;
           label = sinkName && sinkName.length > 4 ? sinkName.slice(0, 4) : (sinkName || 'SINK');
           break;
         }
         case MachineType.DISPLAY: label = 'UTF8'; break;
-        case MachineType.COMMAND: label = machine.command.split(/\s+/)[0]; break;
+        case MachineType.COMMAND: label = sprite ? '' : machine.command.split(/\s+/)[0]; break;
         case MachineType.NULL:     label = 'NULL'; break;
         case MachineType.LINEFEED:   label = 'LF';   break;
         case MachineType.FLIPPER:    label = 'FLIP'; break;
         case MachineType.DUPLICATOR: label = 'DUP';  break;
-        case MachineType.CONSTANT:   label = 'LOOP'; break;
+
         case MachineType.DELAY:      label = 'DLY';  break;
         case MachineType.KEYBOARD:   label = 'KEY';  break;
         case MachineType.PACKER:     label = 'PACK'; break;
@@ -1181,7 +1215,7 @@ export class Renderer {
         case MachineType.LATCH:      label = 'LAT';  break;
         case MachineType.DRUM:       label = 'DRUM'; break;
         case MachineType.SPEAK:      label = 'TALK'; break;
-        case MachineType.BYTE:       label = 'BYTE'; break;
+        case MachineType.BYTE:       label = sprite ? '' : 'BYTE'; break;
 
       }
 
@@ -1338,13 +1372,23 @@ export class Renderer {
     // Linefeed: timer progress arc
     if (machine.type === MachineType.LINEFEED) {
       const lfm = machine as LinefeedMachine;
-      this.drawTimerArc(machine.x, machine.y, lfm.emitInterval, lfm.lastEmitTime, MACHINE_COLORS[MachineType.LINEFEED].border);
+      this.drawTimerArc(machine.x, machine.y, lfm.clock.interval, lfm.clock.timeRemaining, MACHINE_COLORS[MachineType.LINEFEED].border);
     }
 
-    // Constant: timer progress arc
-    if (machine.type === MachineType.CONSTANT) {
-      const cm = machine as ConstantMachine;
-      this.drawTimerArc(machine.x, machine.y, cm.emitInterval, cm.lastEmitTime, MACHINE_COLORS[MachineType.CONSTANT].border);
+    // Source: progress arc (fills during gap, drains during release)
+    if (machine.type === MachineType.SOURCE) {
+      const sm = machine as SourceMachine;
+      if (sm.loop && sm.sourceText.length > 0) {
+        let progress: number;
+        if (sm.gapTimer.timeRemaining > 0 && sm.gapTimer.interval > 0) {
+          // Gap phase: arc fills up (0→1)
+          progress = clamp(1 - sm.gapTimer.timeRemaining / sm.gapTimer.interval, 0, 1);
+        } else {
+          // Release phase: arc drains (1→0) as chars are emitted
+          progress = clamp(1 - sm.sourcePos / sm.sourceText.length, 0, 1);
+        }
+        this.drawTimerArc(machine.x, machine.y, 1, 1 - progress, MACHINE_COLORS[MachineType.SOURCE].border);
+      }
     }
   }
 
@@ -1566,16 +1610,14 @@ export class Renderer {
   // Timer arc overlay (progress ring for timer-based machines)
   // -------------------------------------------------------------------------
 
-  private drawTimerArc(col: number, row: number, emitInterval: number, lastEmitTime: number, color: string): void {
+  private drawTimerArc(col: number, row: number, interval: number, timeRemaining: number, color: string): void {
     const ctx = this.ctx;
     const mcx = cx(col);
     const mcy = cy(row);
     const r = CELL_INNER / 2 - 1;
     const start = -HALF_PI;
 
-    const adjustedDelay = emitInterval / this.timescale;
-    const elapsed = now - lastEmitTime;
-    const progress = adjustedDelay > 0 ? clamp(elapsed / adjustedDelay, 0, 1) : 0;
+    const progress = interval > 0 ? clamp(1 - timeRemaining / interval, 0, 1) : 0;
 
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;

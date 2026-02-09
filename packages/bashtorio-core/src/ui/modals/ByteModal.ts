@@ -63,8 +63,8 @@ export class ByteModal extends BaseModal {
 
   configure(machine: ByteMachine) {
     this.machine = machine;
-    this.qs<HTMLInputElement>('.byte-interval').value = String(machine.emitInterval);
-    this.qs<HTMLInputElement>('.byte-gap').value = String(machine.gapInterval);
+    this.qs<HTMLInputElement>('.byte-interval').value = String(machine.clock.interval);
+    this.qs<HTMLInputElement>('.byte-gap').value = String(machine.gapTimer.interval);
     this.hexInput!.setBytes(machine.byteData);
     this.show();
     this.hexInput!.focus();
@@ -72,8 +72,8 @@ export class ByteModal extends BaseModal {
 
   protected save() {
     if (this.machine) {
-      this.machine.emitInterval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.byte-interval').value) || 500);
-      this.machine.gapInterval = Math.max(0, parseInt(this.qs<HTMLInputElement>('.byte-gap').value) || 0);
+      this.machine.clock.interval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.byte-interval').value) || 500);
+      this.machine.gapTimer.interval = Math.max(0, parseInt(this.qs<HTMLInputElement>('.byte-gap').value) || 0);
       this.machine.byteData = this.hexInput!.getBytes();
       this.machine.bytePos = 0;
     }

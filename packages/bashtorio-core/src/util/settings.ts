@@ -6,6 +6,7 @@ export interface Settings {
   theme: string;
   ambientVolume: number;
   machineVolume: number;
+  photoTextures: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -14,6 +15,7 @@ const DEFAULTS: Settings = {
   theme: 'midnight',
   ambientVolume: 1,
   machineVolume: 1,
+  photoTextures: false,
 };
 
 export function loadSettings(): Settings {

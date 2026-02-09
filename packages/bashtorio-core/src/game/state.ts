@@ -14,9 +14,6 @@ export interface GameState {
 
   selectedMachine: Machine | null;
   mouseDown: boolean;
-
-  lastEmitTime: number;
-  emitDelay: number;
 }
 
 export function createInitialState(): GameState {
@@ -34,8 +31,5 @@ export function createInitialState(): GameState {
 
     selectedMachine: null,
     mouseDown: false,
-
-    lastEmitTime: 0,
-    emitDelay: 150,
   };
 }

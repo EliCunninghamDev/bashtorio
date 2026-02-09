@@ -1,6 +1,7 @@
 import type { GameState } from '../game/state';
 import type { Machine, MathOp } from '../game/types';
 import { CellType, MachineType, Direction } from '../game/types';
+import { EmitTimer } from '../game/clock';
 import {
   clearGrid,
   forEachNonEmpty, getMachineIndex, getBeltDir,
@@ -55,6 +56,7 @@ interface SerializedMachine {
   flipperDir?: number;
   constantText?: string;
   constantInterval?: number; // legacy: old saves used this for CONSTANT
+  loop?: boolean;
   filterByte?: string;
   filterMode?: 'pass' | 'block';
   counterTrigger?: string;
@@ -118,9 +120,10 @@ export function serializeState(state: GameState): SaveData {
     const base: SerializedMachine = { x: m.x, y: m.y, type: m.type, command: '', autoStart: false, sinkId: 0 };
     switch (m.type) {
       case MachineType.SOURCE:
-        base.emitInterval = m.emitInterval;
+        base.emitInterval = m.clock.interval;
         base.sourceText = m.sourceText;
-        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
+        base.loop = m.loop;
+        if (m.gapTimer.interval > 0) base.gapInterval = m.gapTimer.interval;
         break;
       case MachineType.SINK:
         base.sinkId = m.sinkId;
@@ -133,15 +136,10 @@ export function serializeState(state: GameState): SaveData {
         if (m.inputMode !== 'pipe') base.inputMode = m.inputMode;
         break;
       case MachineType.LINEFEED:
-        base.emitInterval = m.emitInterval;
+        base.emitInterval = m.clock.interval;
         break;
       case MachineType.FLIPPER:
         base.flipperDir = m.flipperDir;
-        break;
-      case MachineType.CONSTANT:
-        base.constantText = m.constantText;
-        base.emitInterval = m.emitInterval;
-        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
         break;
       case MachineType.FILTER:
         base.filterByte = m.filterByte;
@@ -180,7 +178,7 @@ export function serializeState(state: GameState): SaveData {
         break;
       case MachineType.CLOCK:
         base.clockByte = m.clockByte;
-        base.emitInterval = m.emitInterval;
+        base.emitInterval = m.clock.interval;
         break;
       case MachineType.LATCH:
         base.latchDataDir = m.latchDataDir;
@@ -208,8 +206,8 @@ export function serializeState(state: GameState): SaveData {
         break;
       case MachineType.BYTE:
         base.byteData = Array.from(m.byteData);
-        base.emitInterval = m.emitInterval;
-        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
+        base.emitInterval = m.clock.interval;
+        if (m.gapTimer.interval > 0) base.gapInterval = m.gapTimer.interval;
         break;
     }
     return base;
@@ -260,10 +258,9 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.SOURCE,
           sourceText: sm.sourceText ?? data.sourceText ?? '',
           sourcePos: 0,
-          emitInterval: sm.emitInterval ?? 500,
-          lastEmitTime: 0,
-          gapInterval: sm.gapInterval ?? 0,
-          gapRemaining: 0,
+          clock: new EmitTimer(sm.emitInterval ?? 500),
+          gapTimer: new EmitTimer(sm.gapInterval ?? 0),
+          loop: sm.loop ?? true,
         };
         break;
       case MachineType.SINK:
@@ -314,8 +311,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
         machine = {
           ...base,
           type: MachineType.LINEFEED,
-          emitInterval: sm.emitInterval ?? 500,
-          lastEmitTime: 0,
+          clock: new EmitTimer(sm.emitInterval ?? 500),
         };
         break;
       case MachineType.FLIPPER:
@@ -330,16 +326,15 @@ export function deserializeState(state: GameState, data: SaveData): void {
       case MachineType.DUPLICATOR:
         machine = { ...base, type: MachineType.DUPLICATOR, outputBuffer: '' };
         break;
-      case MachineType.CONSTANT:
+      case 'constant' as MachineType:
         machine = {
           ...base,
-          type: MachineType.CONSTANT,
-          constantText: sm.constantText ?? 'hello\n',
-          emitInterval: sm.emitInterval ?? sm.constantInterval ?? 500,
-          constantPos: 0,
-          lastEmitTime: 0,
-          gapInterval: sm.gapInterval ?? 0,
-          gapRemaining: 0,
+          type: MachineType.SOURCE,
+          sourceText: sm.constantText ?? 'hello\n',
+          sourcePos: 0,
+          clock: new EmitTimer(sm.emitInterval ?? sm.constantInterval ?? 500),
+          gapTimer: new EmitTimer(sm.gapInterval ?? 0),
+          loop: true,
         };
         break;
       case MachineType.FILTER:
@@ -441,8 +436,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           ...base,
           type: MachineType.CLOCK,
           clockByte: sm.clockByte ?? '*',
-          emitInterval: sm.emitInterval ?? 1000,
-          lastEmitTime: 0,
+          clock: new EmitTimer(sm.emitInterval ?? 1000),
         };
         break;
       case MachineType.LATCH:
@@ -505,10 +499,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.BYTE,
           byteData: sm.byteData ? new Uint8Array(sm.byteData) : new Uint8Array(0),
           bytePos: 0,
-          emitInterval: sm.emitInterval ?? 500,
-          lastEmitTime: 0,
-          gapInterval: sm.gapInterval ?? 0,
-          gapRemaining: 0,
+          clock: new EmitTimer(sm.emitInterval ?? 500),
+          gapTimer: new EmitTimer(sm.gapInterval ?? 0),
         };
         break;
       default:

@@ -2,28 +2,13 @@
 // HexInput – interactive hex editor with address column + ASCII sidebar
 // ---------------------------------------------------------------------------
 
+import { ALL_QUICK } from '../../util/bytes';
+
 export interface HexInputOptions {
   value?: Uint8Array;
   onChange?: (bytes: Uint8Array) => void;
   columns?: number;
 }
-
-interface QuickByte {
-  label: string;
-  value: number;
-  title: string;
-}
-
-const QUICK_BYTES: QuickByte[] = [
-  { label: 'NUL', value: 0x00, title: 'Null \u2013 all bits off (00)' },
-  { label: 'FF',  value: 0xFF, title: 'All bits on (FF)' },
-  { label: '\\n', value: 0x0A, title: 'Line Feed (0A)' },
-  { label: '\\r', value: 0x0D, title: 'Carriage Return (0D)' },
-  { label: 'SPC', value: 0x20, title: 'Space (20)' },
-  { label: 'EOT', value: 0x04, title: 'End of Transmission (04)' },
-  { label: 'ESC', value: 0x1B, title: 'Escape (1B)' },
-  { label: '\\t', value: 0x09, title: 'Tab (09)' },
-];
 
 const COL_MIN = 4;
 const COL_MAX = 64;
@@ -170,31 +155,30 @@ export class HexInput {
       this.onChange?.(this.getBytes());
     });
 
-    // Helper buttons
+    // Helper buttons (same style as ByteInput quick-picks)
     const helpers = document.createElement('div');
     helpers.className = 'hex-helpers';
-    for (const qb of QUICK_BYTES) {
+    for (const meta of ALL_QUICK) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'hex-quick-btn';
-      btn.title = qb.title;
+      btn.className = `byte-btn byte-btn--${meta.category}`;
+      btn.dataset.value = meta.value;
+      btn.title = `${meta.name} (0x${meta.code.toString(16).toUpperCase().padStart(2, '0')})`;
 
       const labelSpan = document.createElement('span');
-      labelSpan.className = 'hex-quick-label';
-      labelSpan.textContent = qb.label;
-      btn.appendChild(labelSpan);
+      labelSpan.className = 'byte-btn-label';
+      labelSpan.textContent = meta.display;
 
-      const hexStr = qb.value.toString(16).toUpperCase().padStart(2, '0');
-      if (hexStr !== qb.label.toUpperCase()) {
-        const hexSpan = document.createElement('span');
-        hexSpan.className = 'hex-quick-hex';
-        hexSpan.textContent = hexStr;
-        btn.appendChild(hexSpan);
-      }
+      const hexSpan = document.createElement('span');
+      hexSpan.className = 'byte-btn-hex';
+      hexSpan.textContent = meta.code.toString(16).toUpperCase().padStart(2, '0');
+
+      btn.appendChild(labelSpan);
+      btn.appendChild(hexSpan);
 
       btn.addEventListener('mousedown', (e) => e.preventDefault());
       btn.addEventListener('click', () => {
-        this.data.splice(this.cursor, 0, qb.value);
+        this.data.splice(this.cursor, 0, meta.code);
         this.cursor++;
         this.pendingNibble = null;
         this.renderDisplay();

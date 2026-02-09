@@ -335,6 +335,12 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
             </div>
           </div>
         </div>
+        <div class="boot-error" style="display: none;">
+          <div class="boot-error-title">Error</div>
+          <div class="boot-error-detail"></div>
+          <div class="boot-error-suggestion"></div>
+          <button class="boot-error-retry">Retry</button>
+        </div>
       </div>
       <div class="bashtorio-game" style="display: none;">
         <div class="bashtorio-systembar"></div>
@@ -362,7 +368,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       <bt-source-modal></bt-source-modal>
       <bt-linefeed-modal></bt-linefeed-modal>
       <bt-flipper-modal></bt-flipper-modal>
-      <bt-constant-modal></bt-constant-modal>
+
       <bt-filter-modal></bt-filter-modal>
       <bt-counter-modal></bt-counter-modal>
       <bt-delay-modal></bt-delay-modal>
@@ -545,7 +551,45 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     return instance;
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    setStatus('Error: ' + err.message);
+    const msg = err.message;
+
+    let title: string;
+    let suggestion: string;
+
+    if (msg.includes('9p: timed out') || msg.includes('9p: verification')) {
+      title = 'Filesystem failed to start';
+      suggestion = 'The VM booted but the 9p filesystem didn\u2019t respond. Try reloading.';
+    } else if (msg.includes('Boot timeout')) {
+      title = 'VM took too long to boot';
+      suggestion = 'The VM didn\u2019t finish booting in time. Check your snapshot URL or try reloading.';
+    } else if (msg.includes('VM test failed')) {
+      title = 'VM isn\u2019t responding';
+      suggestion = 'The VM booted but didn\u2019t respond to a test command. Try reloading.';
+    } else if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+      title = 'Failed to load game assets';
+      suggestion = 'A network request failed. Check your connection and asset URLs.';
+    } else {
+      title = 'Something went wrong';
+      suggestion = 'An unexpected error occurred. Try reloading the page.';
+    }
+
+    setStatus('');
+
+    const bootContent = container.querySelector('.boot-content') as HTMLElement;
+    const bootError = container.querySelector('.boot-error') as HTMLElement;
+    const errorTitle = container.querySelector('.boot-error-title') as HTMLElement;
+    const errorDetail = container.querySelector('.boot-error-detail') as HTMLElement;
+    const errorSuggestion = container.querySelector('.boot-error-suggestion') as HTMLElement;
+    const retryBtn = container.querySelector('.boot-error-retry') as HTMLElement;
+
+    errorTitle.textContent = title;
+    errorDetail.textContent = msg;
+    errorSuggestion.textContent = suggestion;
+    retryBtn.addEventListener('click', () => location.reload());
+
+    bootContent.style.display = 'none';
+    bootError.style.display = '';
+
     onError?.(err);
     throw err;
   }

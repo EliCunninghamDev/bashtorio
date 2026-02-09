@@ -174,7 +174,7 @@ function fromPalette(p: ThemePalette): ColorTheme {
 			[MachineType.LINEFEED]:   mc(p.blue),
 			[MachineType.FLIPPER]:    mc(p.cyan),
 			[MachineType.DUPLICATOR]: mc(p.orange),
-			[MachineType.CONSTANT]:   mc(p.cyan),
+
 			[MachineType.FILTER]:     mc(p.yellow),
 			[MachineType.COUNTER]:    mc(p.blue),
 			[MachineType.DELAY]:      mc(p.red),
@@ -258,7 +258,7 @@ function fromLightPalette(p: ThemePalette): ColorTheme {
 			[MachineType.LINEFEED]:   mcLight(p.blue),
 			[MachineType.FLIPPER]:    mcLight(p.cyan),
 			[MachineType.DUPLICATOR]: mcLight(p.orange),
-			[MachineType.CONSTANT]:   mcLight(p.cyan),
+
 			[MachineType.FILTER]:     mcLight(p.yellow),
 			[MachineType.COUNTER]:    mcLight(p.blue),
 			[MachineType.DELAY]:      mcLight(p.red),
@@ -341,7 +341,7 @@ const MIDNIGHT: ColorTheme = {
 		[MachineType.LINEFEED]:   { bg: '#2a4a5a', border: '#4a8aaa', text: '#ccc' },
 		[MachineType.FLIPPER]:    { bg: '#2a5a5a', border: '#4a9a9a', text: '#ccc' },
 		[MachineType.DUPLICATOR]: { bg: '#5a3a2a', border: '#9a6a4a', text: '#ccc' },
-		[MachineType.CONSTANT]:   { bg: '#2a5a4a', border: '#4a9a7a', text: '#ccc' },
+
 		[MachineType.FILTER]:     { bg: '#3a3a2a', border: '#7a7a4a', text: '#ccc' },
 		[MachineType.COUNTER]:    { bg: '#2a3a5a', border: '#4a6a9a', text: '#ccc' },
 		[MachineType.DELAY]:      { bg: '#4a3a3a', border: '#7a5a5a', text: '#ccc' },

@@ -11,6 +11,12 @@ export class SourceModal extends BaseModal {
         <div class="machine-panel">
           <div class="machine-panel-header">
             <span class="machine-panel-title">Source</span>
+            <div class="machine-panel-controls">
+              <label class="machine-panel-check">
+                <input type="checkbox" class="source-loop">
+                <span>Loop</span>
+              </label>
+            </div>
           </div>
           <div class="machine-panel-body">
             <p class="modal-description">Text data emitted one character at a time.</p>
@@ -71,8 +77,9 @@ export class SourceModal extends BaseModal {
     this.machine = machine;
     const textInput = this.qs<HTMLTextAreaElement>('.source-text');
     textInput.value = machine.sourceText;
-    this.qs<HTMLInputElement>('.source-interval').value = String(machine.emitInterval);
-    this.qs<HTMLInputElement>('.source-gap').value = String(machine.gapInterval);
+    this.qs<HTMLInputElement>('.source-interval').value = String(machine.clock.interval);
+    this.qs<HTMLInputElement>('.source-gap').value = String(machine.gapTimer.interval);
+    this.qs<HTMLInputElement>('.source-loop').checked = machine.loop;
     textInput.dispatchEvent(new Event('input')); // trigger newline warn
     this.show();
     textInput.focus();
@@ -81,8 +88,9 @@ export class SourceModal extends BaseModal {
   protected save() {
     if (this.machine) {
       this.machine.sourceText = this.qs<HTMLTextAreaElement>('.source-text').value;
-      this.machine.emitInterval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.source-interval').value) || 500);
-      this.machine.gapInterval = Math.max(0, parseInt(this.qs<HTMLInputElement>('.source-gap').value) || 0);
+      this.machine.clock.interval = Math.max(50, parseInt(this.qs<HTMLInputElement>('.source-interval').value) || 500);
+      this.machine.gapTimer.interval = Math.max(0, parseInt(this.qs<HTMLInputElement>('.source-gap').value) || 0);
+      this.machine.loop = this.qs<HTMLInputElement>('.source-loop').checked;
     }
     this.hide();
   }
