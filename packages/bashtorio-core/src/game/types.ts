@@ -55,6 +55,9 @@ export enum MachineType {
   SEVENSEG = 'sevenseg',
   DRUM = 'drum',
   TONE = 'tone',
+  SPEAK = 'speak',
+  SCREEN = 'screen',
+  BYTE = 'byte',
 }
 
 export interface EmptyCell {
@@ -88,12 +91,21 @@ export interface SourceMachine extends MachineBase, EmitTimer {
   type: MachineType.SOURCE;
   sourceText: string;
   sourcePos: number;
+  gapInterval: number;
+  gapRemaining: number;
 }
+
+export const SINK_DRAIN_SLOTS = 12;
+export const SINK_DRAIN_MS = 800;
+
+export interface SinkDrainEntry { char: string; time: number }
 
 export interface SinkMachine extends MachineBase {
   type: MachineType.SINK;
   sinkId: number;
   name: string;
+  drainRing: SinkDrainEntry[];
+  drainHead: number;
 }
 
 export interface CommandMachine extends MachineBase {
@@ -147,6 +159,8 @@ export interface ConstantMachine extends MachineBase, EmitTimer {
   type: MachineType.CONSTANT;
   constantText: string;
   constantPos: number;
+  gapInterval: number;
+  gapRemaining: number;
 }
 
 export interface FilterMachine extends MachineBase {
@@ -268,6 +282,33 @@ export interface ToneMachine extends MachineBase {
   waveform: OscillatorType;
 }
 
+export interface SpeakMachine extends MachineBase {
+  type: MachineType.SPEAK;
+  speakRate: number;
+  speakPitch: number;
+  speakDelimiter: string;
+  accumulatedBuffer: string;
+  displayText: string;
+  displayTime: number;
+}
+
+export type ScreenResolution = 8 | 16 | 32;
+
+export interface ScreenMachine extends MachineBase {
+  type: MachineType.SCREEN;
+  resolution: ScreenResolution;
+  buffer: Uint8Array;
+  writePos: number;
+}
+
+export interface ByteMachine extends MachineBase, EmitTimer {
+  type: MachineType.BYTE;
+  byteData: Uint8Array;
+  bytePos: number;
+  gapInterval: number;
+  gapRemaining: number;
+}
+
 export type Machine =
   | SourceMachine
   | SinkMachine
@@ -294,7 +335,10 @@ export type Machine =
   | SplitterMachine
   | SevenSegMachine
   | DrumMachine
-  | ToneMachine;
+  | ToneMachine
+  | SpeakMachine
+  | ScreenMachine
+  | ByteMachine;
 
 export interface MachineByType {
   [MachineType.SOURCE]: SourceMachine;
@@ -324,6 +368,9 @@ export interface MachineByType {
   [MachineType.SEVENSEG]: SevenSegMachine;
   [MachineType.DRUM]: DrumMachine;
   [MachineType.TONE]: ToneMachine;
+  [MachineType.SPEAK]: SpeakMachine;
+  [MachineType.SCREEN]: ScreenMachine;
+  [MachineType.BYTE]: ByteMachine;
 }
 
 export type BufferingMachine =
@@ -348,7 +395,7 @@ export function hasOutputBuffer(m: Machine): m is BufferingMachine {
   return 'outputBuffer' in m;
 }
 
-export type EmittingMachine = SourceMachine | LinefeedMachine | ConstantMachine | ClockMachine;
+export type EmittingMachine = SourceMachine | LinefeedMachine | ConstantMachine | ClockMachine | ByteMachine;
 
 export function hasEmitTimer(m: Machine): m is EmittingMachine {
   return 'emitInterval' in m;
@@ -366,7 +413,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'constant' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte';
 
 export interface OrphanedPacket {
 	id: number;

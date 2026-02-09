@@ -9,20 +9,32 @@ export class FilterModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Filter</h3>
-        <p class="modal-description">Pass or block a specific byte.</p>
-        <div class="form-group filter-byte-input-mount"></div>
-        <div class="form-group">
-          <label>Mode:</label>
-          <select class="filter-mode-select modal-select">
-            <option value="pass">Pass (only matching)</option>
-            <option value="block">Block (everything except)</option>
-          </select>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Filter</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Pass or block a specific byte.</p>
+            <div class="form-group filter-byte-input-mount"></div>
+            <div class="form-group">
+              <label>Mode:</label>
+              <div class="radio-group filter-mode">
+                <label class="radio-option">
+                  <input type="radio" name="filter-mode" value="pass">
+                  <span>Pass</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="filter-mode" value="block">
+                  <span>Block</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;
@@ -36,7 +48,7 @@ export class FilterModal extends BaseModal {
   configure(machine: FilterMachine) {
     this.machine = machine;
     this.byteInput.setValue(machine.filterByte);
-    this.qs<HTMLSelectElement>('.filter-mode-select').value = machine.filterMode;
+    this.qs<HTMLInputElement>(`.filter-mode input[value="${machine.filterMode}"]`).checked = true;
     this.show();
     this.byteInput.focus();
   }
@@ -44,7 +56,7 @@ export class FilterModal extends BaseModal {
   protected save() {
     if (this.machine) {
       this.machine.filterByte = this.byteInput.getValue() || '\n';
-      this.machine.filterMode = this.qs<HTMLSelectElement>('.filter-mode-select').value as 'pass' | 'block';
+      this.machine.filterMode = this.qs<HTMLInputElement>('.filter-mode input:checked').value as 'pass' | 'block';
     }
     this.hide();
   }

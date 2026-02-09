@@ -9,13 +9,19 @@ export class CounterModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Counter</h3>
-        <p class="modal-description">Counts received bytes. Emits count and resets on trigger byte.</p>
-        <div class="form-group counter-byte-input-mount"></div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Counter</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Counts received bytes. Emits count and resets on trigger byte.</p>
+            <div class="form-group counter-byte-input-mount"></div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

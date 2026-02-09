@@ -17,6 +17,9 @@ import './ConstantModal';
 import './SourceModal';
 import './CommandModal';
 import './ToneModal';
+import './SpeakModal';
+import './ScreenModal';
+import './ByteModal';
 import './HelpModal';
 import './ManualModal';
 import './AcknowledgementsModal';
@@ -44,6 +47,9 @@ import type { ConstantModal } from './ConstantModal';
 import type { SourceModal } from './SourceModal';
 import type { CommandModal } from './CommandModal';
 import type { ToneModal } from './ToneModal';
+import type { SpeakModal } from './SpeakModal';
+import type { ScreenModal } from './ScreenModal';
+import type { ByteModal } from './ByteModal';
 import type { HelpModal } from './HelpModal';
 import type { ManualModal } from './ManualModal';
 import type { AcknowledgementsModal } from './AcknowledgementsModal';
@@ -85,6 +91,9 @@ export function setupModals(
   const clockModal = container.querySelector('bt-clock-modal') as ClockModal;
   const latchModal = container.querySelector('bt-latch-modal') as LatchModal;
   const toneModal = container.querySelector('bt-tone-modal') as ToneModal;
+  const speakModal = container.querySelector('bt-speak-modal') as SpeakModal;
+  const screenModal = container.querySelector('bt-screen-modal') as ScreenModal;
+  const byteModal = container.querySelector('bt-byte-modal') as ByteModal;
   const sinkModal = container.querySelector('bt-sink-modal') as SinkModal;
   const networkModal = container.querySelector('bt-network-modal') as NetworkModal;
   const presetsModal = container.querySelector('bt-presets-modal') as PresetsModal;
@@ -162,6 +171,15 @@ export function setupModals(
         break;
       case MachineType.TONE:
         toneModal.configure(machine);
+        break;
+      case MachineType.SPEAK:
+        speakModal.configure(machine);
+        break;
+      case MachineType.SCREEN:
+        screenModal.configure(machine);
+        break;
+      case MachineType.BYTE:
+        byteModal.configure(machine);
         break;
     }
   }

@@ -8,16 +8,22 @@ export class SinkModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Sink</h3>
-        <p class="modal-description">Collects bytes and displays output in the sidebar.</p>
-        <div class="form-group">
-          <label>Name:</label>
-          <input class="sink-name-input modal-input" type="text" placeholder="Sink name">
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Sink</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Collects bytes and displays output in the sidebar.</p>
+            <div class="form-group">
+              <label>Name:</label>
+              <input class="sink-name-input modal-input" type="text" placeholder="Sink name">
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

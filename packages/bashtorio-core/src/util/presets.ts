@@ -396,17 +396,50 @@ function createFibonacciPreset(): SaveData {
   };
 }
 
-// MML Tone - Twinkle Twinkle Little Star: SOURCE → awk stream → Tone synth
+// MML Tone - Korobeiniki (two voices): SOURCE → awk stream → Tone synth
 function createMMLTonePreset(): SaveData {
-  // MML split into phrases (one per line) so awk streams output incrementally
-  const mml = 'O4CCGGAAGR\nFFEEDDCR\nGGFFEEDR\nGGFFEEDR\nCCGGAAGR\nFFEEDDCR\n';
-  // awk: converts note names to frequency bytes. fflush() ensures streaming output.
-  const cmd = `awk 'BEGIN{n["C"]=0;n["D"]=2;n["E"]=4;n["F"]=5;n["G"]=7;n["A"]=9;n["B"]=11}{o=4;for(i=1;i<=length;i++){c=substr($0,i,1);if(c=="O"){i++;o=substr($0,i,1)+0}else if(c in n){b=int(153+4.25*((o+1)*12+n[c]-69)+.5);printf"%c",b}else if(c=="R")printf"%c",0}fflush()}'`;
+  // One note per line so awk outputs each byte immediately (no burst buffering).
+  // Every line is 3 chars (padded with dots) for even timing between voices.
+  const n3 = (c: string) => `..${c}`;  // octave 3 note (dots are no-ops)
+  const n2 = (c: string) => `O2${c}`;  // octave 2 note
+  const R = '..R';
+
+  const melody = [
+    // A section: E B C D C B A A
+    n3('E'), n2('B'), n3('C'), n3('D'), n3('C'), n2('B'), n2('A'), n2('A'),
+    //          C E D C B C D E
+    n3('C'), n3('E'), n3('D'), n3('C'), n2('B'), n3('C'), n3('D'), n3('E'),
+    //          C A A - | B: D D F A
+    n3('C'), n2('A'), n2('A'), R,       n3('D'), n3('D'), n3('F'), n3('A'),
+    // B section: G F E C E D C B
+    n3('G'), n3('F'), n3('E'), n3('C'), n3('E'), n3('D'), n3('C'), n2('B'),
+    //          B C D E C A A -
+    n2('B'), n3('C'), n3('D'), n3('E'), n3('C'), n2('A'), n2('A'), R,
+    // A reprise: E B C D C B A -
+    n3('E'), n2('B'), n3('C'), n3('D'), n3('C'), n2('B'), n2('A'), R,
+  ].join('\n') + '\n';
+
+  const bass = [
+    // Am root-fifth pulse (A section, 16 notes)
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
+    // Am → Dm at B section (8 notes)
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('D'), n2('A'), n2('D'), n2('A'),
+    // B section Am (16 notes)
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
+    // A reprise Am (8 notes)
+    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
+  ].join('\n') + '\n';
+
+  // awk: converts MML note names to frequency bytes matching ToneEngine's MIDI 21-108 range.
+  // Formula: byte = ((midi - 21) * 254/87) + 1, where midi = (octave+1)*12 + semitone
+  const cmd = `awk 'BEGIN{n["C"]=0;n["D"]=2;n["E"]=4;n["F"]=5;n["G"]=7;n["A"]=9;n["B"]=11}{o=3;for(i=1;i<=length;i++){c=substr($0,i,1);if(c=="O"){i++;o=substr($0,i,1)+0}else if(c in n){b=int(((o+1)*12+n[c]-21)*254/87+1.5);if(b<1)b=1;if(b>255)b=255;printf"%c",b}else if(c=="R")printf"%c",0}fflush()}'`;
 
   return {
     version: 2,
     cells: [
-      // SOURCE → belts → COMMAND(awk stream) → belts → TONE
+      // Melody: SOURCE → belts → COMMAND(awk) → belts → TONE(square)
       { x: 0, y: 0, type: 'machine', machineIdx: 0 },
       { x: 1, y: 0, type: 'belt', dir: 0 },
       { x: 2, y: 0, type: 'belt', dir: 0 },
@@ -414,13 +447,25 @@ function createMMLTonePreset(): SaveData {
       { x: 4, y: 0, type: 'belt', dir: 0 },
       { x: 5, y: 0, type: 'belt', dir: 0 },
       { x: 6, y: 0, type: 'machine', machineIdx: 2 },
+      // Bass: SOURCE → belts → COMMAND(awk) → belts → TONE(triangle)
+      { x: 0, y: 2, type: 'machine', machineIdx: 3 },
+      { x: 1, y: 2, type: 'belt', dir: 0 },
+      { x: 2, y: 2, type: 'belt', dir: 0 },
+      { x: 3, y: 2, type: 'machine', machineIdx: 4 },
+      { x: 4, y: 2, type: 'belt', dir: 0 },
+      { x: 5, y: 2, type: 'belt', dir: 0 },
+      { x: 6, y: 2, type: 'machine', machineIdx: 5 },
     ],
     machines: [
-      { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 150, sourceText: mml },
+      { x: 0, y: 0, type: MachineType.CONSTANT, command: '', autoStart: false, sinkId: 0, emitInterval: 75, constantText: melody },
       { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
       { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square' },
+      { x: 0, y: 2, type: MachineType.CONSTANT, command: '', autoStart: false, sinkId: 0, emitInterval: 75, constantText: bass },
+      { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
+      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
     ],
     sinkIdCounter: 1,
+    beltSpeed: 6,
   };
 }
 
@@ -476,8 +521,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'mml-tone',
-    name: 'MML Music Box',
-    description: 'Twinkle Twinkle Little Star - awk parses MML note names into frequency bytes for the Tone synth',
+    name: 'Korobeiniki Music Box',
+    description: 'Two-voice Korobeiniki — awk parses MML notation into frequency bytes for melody + bass Tone synths',
     data: createMMLTonePreset(),
   },
 ];

@@ -14,6 +14,7 @@ const MODES: ModeItem[] = [
 
 export class Toolbar {
   private zoomValue: HTMLElement;
+  private beltSpeedValue: HTMLElement;
   private speedValue: HTMLElement;
   private runBtn: HTMLButtonElement;
   private stopBtn: HTMLButtonElement;
@@ -31,6 +32,7 @@ export class Toolbar {
   ) {
     // --- System bar (top) ---
     render(html`
+      <bt-ingame-logo></bt-ingame-logo>
       <div class="mode-btn-wrapper">
         <button class="action-btn storage-btn">💾 Storage</button>
         <div class="storage-popout" style="display: none;">
@@ -72,9 +74,12 @@ export class Toolbar {
           <bt-event-button event="zoomIn" btn-class="dir-btn" title="Zoom In" label="+"></bt-event-button>
           <bt-event-button event="cameraToFactory" btn-class="dir-btn" title="Recenter on Factory" label="⌖"></bt-event-button>
         </div>
-        <div class="tool-group">
+        <div class="tool-group speed-group">
           <label>Speed:</label>
-          <input type="range" class="speed-slider" min="0.25" max="4" step="0.25" .value="${String(state.timescale)}">
+          <input type="range" class="styled-slider belt-speed-slider" min="1" max="10" step="1" .value="${String(state.beltSpeed)}">
+          <span class="belt-speed-value">${state.beltSpeed}</span>
+          <label>Time:</label>
+          <input type="range" class="styled-slider speed-slider" min="0.25" max="4" step="0.25" .value="${String(state.timescale)}">
           <span class="speed-value">${state.timescale}x</span>
         </div>
         <div class="tool-group">
@@ -102,6 +107,7 @@ export class Toolbar {
 
     // Cache DOM refs
     this.zoomValue = toolbar.querySelector('.zoom-value') as HTMLElement;
+    this.beltSpeedValue = toolbar.querySelector('.belt-speed-value') as HTMLElement;
     this.speedValue = toolbar.querySelector('.speed-value') as HTMLElement;
     this.runBtn = toolbar.querySelector('.run-btn') as HTMLButtonElement;
     this.stopBtn = toolbar.querySelector('.stop-btn') as HTMLButtonElement;
@@ -128,6 +134,14 @@ export class Toolbar {
     toolbar.querySelector('.dir-btn')?.addEventListener('click', () => {
       emitGameEvent('rotate');
     });
+
+    // Belt speed slider
+    const beltSpeedSlider = toolbar.querySelector('.belt-speed-slider') as HTMLInputElement;
+    beltSpeedSlider?.addEventListener('input', () => {
+      const beltSpeed = parseInt(beltSpeedSlider.value, 10);
+      emitGameEvent('beltSpeedSet', { beltSpeed });
+    });
+    beltSpeedSlider?.addEventListener('change', () => beltSpeedSlider.blur());
 
     // Speed slider
     const speedSlider = toolbar.querySelector('.speed-slider') as HTMLInputElement;
@@ -210,6 +224,9 @@ export class Toolbar {
     // Zoom/speed/mute display updates
     onGameEvent('zoomChanged', ({ scale }) => {
       this.zoomValue.textContent = Math.round(scale * 100) + '%';
+    });
+    onGameEvent('beltSpeedChanged', ({ beltSpeed }) => {
+      this.beltSpeedValue.textContent = String(beltSpeed);
     });
     onGameEvent('speedChanged', ({ speed }) => {
       this.speedValue.textContent = speed + 'x';

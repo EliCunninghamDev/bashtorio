@@ -90,9 +90,19 @@ function darken(hex: string, amount: number): string {
 	return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
 }
 
+function lighten(hex: string, amount: number): string {
+	const [r, g, b] = hexToRgb(hex);
+	return rgbToHex(r + (255 - r) * amount, g + (255 - g) * amount, b + (255 - b) * amount);
+}
+
 /** Generate machine box colors: dark bg, medium border, light text */
 function mc(color: string, text = '#ccc'): MachineColor {
 	return { bg: darken(color, 0.65), border: darken(color, 0.35), text };
+}
+
+/** Light-theme machine box: very light tinted bg, medium border, dark text */
+function mcLight(color: string): MachineColor {
+	return { bg: lighten(color, 0.82), border: darken(color, 0.1), text: darken(color, 0.4) };
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +193,9 @@ function fromPalette(p: ThemePalette): ColorTheme {
 			[MachineType.SEVENSEG]:   { bg: '#000000', border: p.fg, text: p.red },
 			[MachineType.DRUM]:       mc(p.orange),
 			[MachineType.TONE]:       mc(p.purple),
+			[MachineType.SPEAK]:      mc(p.cyan),
+			[MachineType.SCREEN]:     { bg: '#000000', border: p.fg, text: '#ffffff' },
+			[MachineType.BYTE]:       mc(p.cyan),
 		},
 		uiBg: p.bg,
 		uiBgSurface: p.bg2,
@@ -197,6 +210,89 @@ function fromPalette(p: ThemePalette): ColorTheme {
 		uiAccent: p.accent,
 		uiAccentGreen: darken(p.green, 0.6),
 		uiAccentRed: darken(p.red, 0.6),
+	};
+}
+
+function fromLightPalette(p: ThemePalette): ColorTheme {
+	const [fr, fg, fb] = hexToRgb(p.green);
+	return {
+		id: p.id,
+		name: p.name,
+		canvasBg: p.bg,
+		gridLine: p.bg2,
+		beltBg: p.bg3,
+		beltEdge: p.border,
+		beltArrow: p.fgDim,
+		splitterBg: lighten(p.purple, 0.8),
+		splitterSymbol: p.purple,
+		cmdGreen: darken(p.green, 0.15),
+		inputAmber: darken(p.orange, 0.1),
+		dotEmpty: lighten(p.fg, 0.6),
+		flipperArrow: p.cyan,
+		flashR: fr,
+		flashG: fg,
+		flashB: fb,
+		packetBg: darken(p.bg, 0.06),
+		packetHex: p.fgDim,
+		packetControl: p.orange,
+		packetSpace: lighten(p.fg, 0.3),
+		packetLower: p.blue,
+		packetUpper: darken(p.green, 0.1),
+		packetDigit: darken(p.yellow, 0.15),
+		packetExtended: p.purple,
+		packetPunct: p.pink,
+		bubbleBg: p.bg2,
+		bubbleBorder: p.accent,
+		bubbleText: p.fg,
+		tooltipBg: p.bg,
+		tooltipBorder: p.border,
+		tooltipCmd: darken(p.green, 0.1),
+		tooltipInput: p.orange,
+		tooltipOutput: p.fg,
+		machineColors: {
+			[MachineType.SOURCE]:     mcLight(p.green),
+			[MachineType.SINK]:       mcLight(p.red),
+			[MachineType.COMMAND]:    { bg: p.bg2, border: p.border, text: darken(p.green, 0.1) },
+			[MachineType.DISPLAY]:    mcLight(p.purple),
+			[MachineType.NULL]:       { bg: lighten(p.fg, 0.85), border: lighten(p.fg, 0.5), text: lighten(p.fg, 0.3) },
+			[MachineType.LINEFEED]:   mcLight(p.blue),
+			[MachineType.FLIPPER]:    mcLight(p.cyan),
+			[MachineType.DUPLICATOR]: mcLight(p.orange),
+			[MachineType.CONSTANT]:   mcLight(p.cyan),
+			[MachineType.FILTER]:     mcLight(p.yellow),
+			[MachineType.COUNTER]:    mcLight(p.blue),
+			[MachineType.DELAY]:      mcLight(p.red),
+			[MachineType.KEYBOARD]:   mcLight(p.purple),
+			[MachineType.PACKER]:     mcLight(p.purple),
+			[MachineType.UNPACKER]:   mcLight(p.red),
+			[MachineType.ROUTER]:     mcLight(p.orange),
+			[MachineType.GATE]:       mcLight(p.red),
+			[MachineType.WIRELESS]:   { bg: p.bg, border: p.fg, text: p.fg },
+			[MachineType.REPLACE]:    mcLight(p.yellow),
+			[MachineType.MATH]:       mcLight(p.green),
+			[MachineType.CLOCK]:      mcLight(p.pink),
+			[MachineType.LATCH]:      mcLight(p.blue),
+			[MachineType.SPLITTER]:   mcLight(p.purple),
+			[MachineType.SEVENSEG]:   { bg: '#f5f5f5', border: p.fg, text: p.red },
+			[MachineType.DRUM]:       mcLight(p.orange),
+			[MachineType.TONE]:       mcLight(p.purple),
+			[MachineType.SPEAK]:      mcLight(p.cyan),
+			[MachineType.SCREEN]:     { bg: '#f5f5f5', border: p.fg, text: '#000000' },
+			[MachineType.BYTE]:       mcLight(p.cyan),
+		},
+		uiBg: p.bg,
+		uiBgSurface: p.bg2,
+		uiBgElement: p.bg3,
+		uiBgInput: darken(p.bg, 0.06),
+		uiBgDeep: darken(p.bg, 0.12),
+		uiBorder: p.border,
+		uiBorderLight: lighten(p.border, 0.3),
+		uiFg: p.fg,
+		uiFgSecondary: lighten(p.fg, 0.2),
+		uiFgMuted: p.fgDim,
+		uiAccent: p.accent,
+		uiAccentGreen: lighten(p.green, 0.8),
+		uiAccentRed: lighten(p.red, 0.8),
 	};
 }
 
@@ -264,6 +360,9 @@ const MIDNIGHT: ColorTheme = {
 		[MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
 		[MachineType.DRUM]:       { bg: '#4a3a2a', border: '#aa7744', text: '#ffcc66' },
 		[MachineType.TONE]:       { bg: '#3a2a5a', border: '#7a4aaa', text: '#cc99ff' },
+		[MachineType.SPEAK]:      { bg: '#2a4a5a', border: '#4a8aaa', text: '#88ddff' },
+		[MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
+		[MachineType.BYTE]:       { bg: '#2a4a4a', border: '#4a8a8a', text: '#88ddcc' },
 	},
 	uiBg: '#1a1a2e',
 	uiBgSurface: '#1e1e32',
@@ -340,6 +439,26 @@ const GITHUB_DARK = fromPalette({
 	purple: '#d2a8ff', pink: '#ff7b72',
 });
 
+const VSCODE_DARK = fromPalette({
+	id: 'vscode-dark', name: 'VS Code Dark',
+	bg: '#1e1e1e', bg2: '#252526', bg3: '#333333',
+	border: '#3c3c3c', fg: '#d4d4d4', fgDim: '#808080',
+	accent: '#007acc',
+	red: '#f44747', orange: '#ce9178', yellow: '#dcdcaa',
+	green: '#6a9955', cyan: '#4ec9b0', blue: '#569cd6',
+	purple: '#c586c0', pink: '#d16969',
+});
+
+const VSCODE_LIGHT = fromLightPalette({
+	id: 'vscode-light', name: 'VS Code Light',
+	bg: '#ffffff', bg2: '#f3f3f3', bg3: '#e8e8e8',
+	border: '#d4d4d4', fg: '#333333', fgDim: '#767676',
+	accent: '#007acc',
+	red: '#cd3131', orange: '#e36209', yellow: '#d19a66',
+	green: '#008000', cyan: '#267f99', blue: '#0451a5',
+	purple: '#af00db', pink: '#c2185b',
+});
+
 /** Set CSS custom properties on a root element so the UI chrome picks up the theme */
 export function applyUITheme(root: HTMLElement, theme: ColorTheme): void {
 	const s = root.style;
@@ -359,16 +478,18 @@ export function applyUITheme(root: HTMLElement, theme: ColorTheme): void {
 }
 
 export const THEMES: ColorTheme[] = [
-	MIDNIGHT,
 	MONOKAI,
+	MIDNIGHT,
 	DRACULA,
 	SOLARIZED_DARK,
 	ONE_DARK,
 	NORD,
 	GITHUB_DARK,
+	VSCODE_DARK,
+	VSCODE_LIGHT,
 ];
 
-export const DEFAULT_THEME_ID = 'midnight';
+export const DEFAULT_THEME_ID = 'monokai';
 
 export function getThemeById(id: string): ColorTheme {
 	return THEMES.find(t => t.id === id) ?? MIDNIGHT;

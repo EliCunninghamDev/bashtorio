@@ -45,20 +45,20 @@ export function getNetworkRelay(): string | null {
 // Shell lifecycle
 // ---------------------------------------------------------------------------
 
-export function createShell(machineId: string): Promise<number> {
-  return instance!.createShell(machineId);
+export function createShell(shellTag: string): Promise<number> {
+  return instance!.createShell(shellTag);
 }
 
-export function destroyShell(machineId: string): Promise<void> {
-  return instance!.destroyShell(machineId);
+export function destroyShell(shellTag: string): Promise<void> {
+  return instance!.destroyShell(shellTag);
 }
 
 // ---------------------------------------------------------------------------
 // Job API
 // ---------------------------------------------------------------------------
 
-export function startJob(machineId: string, cmd: string, stdin?: string): Promise<string> {
-  return instance!.startJob(machineId, cmd, stdin);
+export function startJob(shellTag: string, cmd: string, stdin?: string): Promise<string> {
+  return instance!.startJob(shellTag, cmd, stdin);
 }
 
 export function pollJob(jobId: string): Promise<{ newOutput: string; done: boolean; exitCode: number | null; cwd: string }> {
@@ -73,8 +73,8 @@ export function cleanupJob(jobId: string): Promise<void> {
 // Stream API
 // ---------------------------------------------------------------------------
 
-export function startStream(machineId: string, cmd: string): Promise<string> {
-  return instance!.startStream(machineId, cmd);
+export function startStream(shellTag: string, cmd: string): Promise<string> {
+  return instance!.startStream(shellTag, cmd);
 }
 
 export function writeToStream(jobId: string, data: string): void {
@@ -89,12 +89,12 @@ export function stopStream(jobId: string): Promise<void> {
 // Legacy exec
 // ---------------------------------------------------------------------------
 
-export function execInShell(machineId: string, cmd: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
-  return instance!.execInShell(machineId, cmd, opts);
+export function execInShell(shellTag: string, cmd: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
+  return instance!.execInShell(shellTag, cmd, opts);
 }
 
-export function pipeInShell(machineId: string, input: string, command: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
-  return instance!.pipeInShell(machineId, input, command, opts);
+export function pipeInShell(shellTag: string, input: string, command: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
+  return instance!.pipeInShell(shellTag, input, command, opts);
 }
 
 // ---------------------------------------------------------------------------

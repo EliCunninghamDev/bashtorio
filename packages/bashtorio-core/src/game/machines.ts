@@ -19,12 +19,12 @@ export function clearMachines(): void {
 export type MachineDefaults<T extends MachineType> = Omit<MachineByType[T], keyof MachineBase | 'type'>;
 
 export function sourceDefaults(): MachineDefaults<MachineType.SOURCE> {
-  return { sourceText: 'Hello World!\n', sourcePos: 0, emitInterval: 500, lastEmitTime: 0 };
+  return { sourceText: 'Hello World!\n', sourcePos: 0, emitInterval: 500, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
 }
 
 export function sinkDefaults(): MachineDefaults<MachineType.SINK> {
   const id = nextSinkId();
-  return { sinkId: id, name: `Sink ${id}` };
+  return { sinkId: id, name: `Sink ${id}`, drainRing: [], drainHead: 0 };
 }
 
 export function commandDefaults(): MachineDefaults<MachineType.COMMAND> {
@@ -53,7 +53,7 @@ export function duplicatorDefaults(): MachineDefaults<MachineType.DUPLICATOR> {
 }
 
 export function constantDefaults(): MachineDefaults<MachineType.CONSTANT> {
-  return { constantText: 'hello\n', emitInterval: 500, constantPos: 0, lastEmitTime: 0 };
+  return { constantText: 'hello\n', emitInterval: 500, constantPos: 0, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
 }
 
 export function filterDefaults(): MachineDefaults<MachineType.FILTER> {
@@ -125,6 +125,18 @@ export function toneDefaults(): MachineDefaults<MachineType.TONE> {
   return { waveform: 'sine' };
 }
 
+export function speakDefaults(): MachineDefaults<MachineType.SPEAK> {
+  return { speakRate: 1, speakPitch: 1, speakDelimiter: '\n', accumulatedBuffer: '', displayText: '', displayTime: 0 };
+}
+
+export function screenDefaults(): MachineDefaults<MachineType.SCREEN> {
+  return { resolution: 8, buffer: new Uint8Array(8), writePos: 0 };
+}
+
+export function byteDefaults(): MachineDefaults<MachineType.BYTE> {
+  return { byteData: new Uint8Array(0), bytePos: 0, emitInterval: 500, lastEmitTime: 0, gapInterval: 0, gapRemaining: 0 };
+}
+
 // ---------------------------------------------------------------------------
 // Machine factory
 // ---------------------------------------------------------------------------
@@ -160,5 +172,8 @@ export function createMachine(x: number, y: number, machineType: MachineType, di
     case MachineType.SEVENSEG:   return { ...base, type: MachineType.SEVENSEG, ...sevensegDefaults() };
     case MachineType.DRUM:       return { ...base, type: MachineType.DRUM, ...drumDefaults() };
     case MachineType.TONE:       return { ...base, type: MachineType.TONE, ...toneDefaults() };
+    case MachineType.SPEAK:      return { ...base, type: MachineType.SPEAK, ...speakDefaults() };
+    case MachineType.SCREEN:     return { ...base, type: MachineType.SCREEN, ...screenDefaults() };
+    case MachineType.BYTE:       return { ...base, type: MachineType.BYTE, ...byteDefaults() };
   }
 }

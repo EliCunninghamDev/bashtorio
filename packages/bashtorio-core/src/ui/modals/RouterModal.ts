@@ -12,21 +12,29 @@ export class RouterModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Router</h3>
-        <p class="modal-description">Routes bytes by match: matching byte goes to one direction, everything else to another.</p>
-        <div class="form-group router-byte-input-mount"></div>
-        <div class="form-group">
-          <label>Match Direction:</label>
-          <div class="router-match-dir-mount"></div>
-        </div>
-        <div class="form-group">
-          <label>Else Direction:</label>
-          <div class="router-else-dir-mount"></div>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Router</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Routes bytes by match: matching byte goes to one direction, everything else to another.</p>
+            <div class="form-group router-byte-input-mount"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Match Direction:</label>
+                <div class="router-match-dir-mount"></div>
+              </div>
+              <div class="form-group">
+                <label>Else Direction:</label>
+                <div class="router-else-dir-mount"></div>
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

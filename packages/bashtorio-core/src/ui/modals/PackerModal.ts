@@ -9,16 +9,25 @@ export class PackerModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Packer</h3>
-        <p class="modal-description">Accumulates bytes until delimiter, then emits the buffer as one packet.</p>
-        <div class="form-group packer-byte-input-mount"></div>
-        <div class="form-group">
-          <label><input type="checkbox" class="packer-preserve"> Preserve delimiter in output</label>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Packer</span>
+            <div class="machine-panel-controls">
+              <label class="machine-panel-check">
+                <input type="checkbox" class="packer-preserve">
+                <span>Preserve delimiter</span>
+              </label>
+            </div>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Accumulates bytes until delimiter, then emits the buffer as one packet.</p>
+            <div class="form-group packer-byte-input-mount"></div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

@@ -1,129 +1,166 @@
-// Re-export types and classes
+// ----------- Re-exports: Types & State -----------
 export * from './game/types';
 export * from './game/state';
+
+// ----------- Re-exports: VM -----------
 export { LinuxVM } from './vm';
 export type { VMConfig } from './vm';
-
-// Re-export VM singleton module
 export * as vm from './game/vm';
+
+// ----------- Re-exports: Render -----------
 export { Renderer } from './render';
 export type { RendererConfig } from './render';
-export { InputHandler } from './ui';
-export { Editor } from './ui';
+export { applyRendererTheme } from './render/renderer';
+
+// ----------- Re-exports: UI -----------
+export { InputHandler, Editor } from './ui';
 export { ByteInput } from './ui/components/ByteInput';
 export type { ByteInputOptions } from './ui/components/ByteInput';
+export { HexInput } from './ui/components/HexInput';
+export type { HexInputOptions } from './ui/components/HexInput';
+
+// ----------- Re-exports: Audio -----------
 export { initSound, loadSounds, connectSoundEvents, play, startLoop, stopLoop, isMuted, setMuted, toggleMute, setAmbientVolume, setMachineVolume, destroySound } from './audio/SoundSystem';
 export type { SoundName, SoundSystemConfig } from './audio/SoundSystem';
+
+// ----------- Re-exports: Events -----------
 export { emitGameEvent, onGameEvent, destroyGameEvents } from './events/bus';
 export type { GameEventMap, GameEvent } from './events/bus';
 
-// Re-export simulation functions
+// ----------- Re-exports: Game -----------
 export { startSimulation, stopSimulation, updateSimulation, toggleSimulation, startSim, stopSim, setSpeed, setupSimulationEvents } from './game/simulation';
-
-// Re-export grid functions + module state
 export { initGrid, clearGrid, getCell, forEachBelt, forEachNonEmpty, getBeltDir, getMachineIndex, setBelt, setMachineCell, setEmpty, reindexAfterSplice, getCellType } from './game/grid';
 export { getSplitterSecondary, getMachineAt, getMachineBounds, updateConfig, placeBelt, placeSplitter, placeMachine, clearCell } from './game/edit';
 export { machines, nextSinkId, getSinkIdCounter, setSinkIdCounter, clearMachines, createMachine } from './game/machines';
 export type { MachineDefaults } from './game/machines';
 export { ChunkedGrid, NO_MACHINE, CHUNK_SIZE } from './game/ChunkedGrid';
-
-// Re-export camera module
 export * as camera from './game/camera';
-
-// Re-export clock module
 export * as clock from './game/clock';
 
-// Re-export save/load functions
+// ----------- Re-exports: Utilities -----------
 export { clearState, serializeState, deserializeState, downloadSave, uploadSave, saveToBase64, loadFromBase64, loadFromURLParam, setupSaveLoadHandlers, type SaveData } from './util/saveload';
-
-// Re-export presets
 export { PRESETS, type Preset } from './util/presets';
-
-// Re-export themes
 export { THEMES, getThemeById, applyUITheme, type ColorTheme } from './util/themes';
-export { applyRendererTheme } from './render/renderer';
 
-import { Renderer } from './render';
-import { InputHandler, Editor } from './ui';
-import { createInitialState, type GameState } from './game/state';
-import { initGrid } from './game/grid';
-import { updateSimulation, setupSimulationEvents } from './game/simulation';
-import * as vm from './game/vm';
-// Side-effect imports to register custom elements
+// ----------- Side-effect Imports (custom element registration) -----------
 import './ui/statsPanel';
 import './ui/commandLog';
 import './ui/sinkOutputPanel';
 import './ui/toast';
 import './ui/vmStatus';
-import type { StatsPanel } from './ui/statsPanel';
-import type { Toast } from './ui/toast';
-import { setupSaveLoadHandlers } from './util/saveload';
-import { loadSettings } from './util/settings';
-import { startSim, stopSim } from './game/simulation';
-import { setupCameraEvents } from './game/camera';
-import * as cam from './game/camera';
-import { tick } from './game/clock';
-import { initSound, connectSoundEvents, loadSounds, startLoop, destroySound, play } from './audio/SoundSystem';
-import { connectToneEvents, destroyTones } from './audio/ToneEngine';
-import { emitGameEvent, onGameEvent, destroyGameEvents } from './events/bus';
-import acknowledgements from './generated/acknowledgements.json';
-import { setupModals } from './ui/modals/index';
-import { Toolbar } from './ui/toolbar';
+import './ui/components/IngameLogo.ts';
 import './ui/eventButton';
 import './ui/placeableButton';
 import './ui/machinePicker';
+
+// ----------- Internal Imports: Game -----------
+import { createInitialState, type GameState } from './game/state';
+import { initGrid } from './game/grid';
+import { updateSimulation, setupSimulationEvents, startSim, stopSim } from './game/simulation';
+import * as vm from './game/vm';
+import { setupCameraEvents } from './game/camera';
+import * as cam from './game/camera';
+import { tick } from './game/clock';
+
+// ----------- Internal Imports: Render -----------
+import { Renderer } from './render';
+
+// ----------- Internal Imports: UI -----------
+import { InputHandler, Editor } from './ui';
+import { Toolbar } from './ui/toolbar';
+import { setupModals } from './ui/modals/index';
+import type { StatsPanel } from './ui/statsPanel';
+import type { Toast } from './ui/toast';
 import type { MachinePicker } from './ui/machinePicker';
+
+// ----------- Internal Imports: Audio -----------
+import { initSound, connectSoundEvents, loadSounds, startLoop, destroySound, play } from './audio/SoundSystem';
+import { connectToneEvents, destroyTones } from './audio/ToneEngine';
+import { connectSpeechEvents, destroySpeech } from './audio/SpeechEngine';
+
+// ----------- Internal Imports: Events -----------
+import { emitGameEvent, onGameEvent, destroyGameEvents } from './events/bus';
 import type { GameEventMap } from './events/bus';
 
+// ----------- Internal Imports: Utilities -----------
+import { setupSaveLoadHandlers } from './util/saveload';
+import { loadSettings } from './util/settings';
+import acknowledgements from './generated/acknowledgements.json';
+
 export interface BashtorioConfig {
-  /** Container element to mount the game into */
   container: HTMLElement;
-  /** Path to v86 assets (wasm, bios, vgabios, linux image) */
-  assetsPath: string;
-  /** Linux image filename (default: linux4.iso) */
-  linuxImage?: string;
-  /** Pre-booted state filename (if provided, skips boot for instant start) */
-  stateImage?: string;
-  /** 9p filesystem URL (for rootfs flat directory) */
-  filesystemUrl?: string;
-  /** 9p basefs JSON manifest - when set, enables 9p-root boot mode */
-  basefs?: string;
-  /** Optional WebSocket relay URL for networking */
-  relayUrl?: string;
-  /** Path to sound assets (default: assetsPath + '/sounds') */
-  soundAssetsUrl?: string;
-  /** Callback when boot status changes */
+  vmAssetsUrl: string;
+  /** default: linux4.iso */
+  bootIso?: string;
+  /** Skips boot when provided */
+  vmSnapshot?: string;
+  rootfsBaseUrl?: string;
+  /** Enables 9p-root boot mode when set */
+  rootfsManifest?: string;
+  networkRelayUrl?: string;
+  /** default: vmAssetsUrl + '/sounds' */
+  soundsUrl?: string;
   onBootStatus?: (status: string) => void;
-  /** Callback when boot completes */
   onReady?: () => void;
-  /** Callback when boot fails */
   onError?: (error: Error) => void;
 }
 
 export interface BashtorioInstance {
-  /** The game state */
   state: GameState;
-  /** The VM singleton facade */
   vm: typeof vm;
-  /** The renderer */
   renderer: Renderer;
-  /** The input handler */
   input: InputHandler;
-  /** Start the simulation */
   start: () => void;
-  /** Stop the simulation */
   stop: () => void;
-  /** Clear the grid */
   clear: () => void;
-  /** Destroy the instance */
   destroy: () => void;
-  /** Download VM state (for creating pre-booted images) */
+  /** For creating pre-booted VM snapshots */
   downloadState: () => Promise<void>;
+}
+
+// ----------- 9p Filesystem Prefetch -----------
+
+type FsEntry = [string, number, number, number, number, number, string | FsEntry[]]
+
+function collectChunks(fsroot: FsEntry[]): string[] {
+  const chunks = new Set<string>()
+  function walk(entries: FsEntry[]) {
+    for (const entry of entries) {
+      const payload = entry[6]
+      if (typeof payload === 'string' && payload.endsWith('.bin.zst')) {
+        chunks.add(payload)
+      } else if (Array.isArray(payload)) {
+        walk(payload)
+      }
+    }
+  }
+  walk(fsroot)
+  return [...chunks]
+}
+
+/**
+ * Prefetch all 9p filesystem chunks into the browser HTTP cache.
+ * Runs in the background with limited concurrency so it doesn't
+ * starve the VM boot of bandwidth.
+ */
+async function prefetch9pFiles(vmAssetsUrl: string, rootfsManifest: string, concurrency = 8): Promise<void> {
+  const res = await fetch(`${vmAssetsUrl}/${rootfsManifest}`)
+  const manifest = await res.json()
+  const chunks = collectChunks(manifest.fsroot)
+  const baseurl = `${vmAssetsUrl}/alpine-rootfs-flat/`
+
+  let i = 0
+  async function next(): Promise<void> {
+    while (i < chunks.length) {
+      const url = baseurl + chunks[i++]
+      await fetch(url).catch(() => {})
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => next()))
 }
 
 type FocusMode = GameEventMap['focusModeChange']['mode'];
 
-/** Wire focus-mode state, terminal focus/blur, and the central keyboard router. */
 function setupKeyboardRouter(
   toast: Toast,
   screenContainer: HTMLElement,
@@ -179,10 +216,8 @@ function setupKeyboardRouter(
 
   onGameEvent('simulationEnded', () => emitGameEvent('focusModeChange', { mode: 'editor' }));
 
-  return { getFocusMode: () => focusMode };
 }
 
-/** Wire cursor updates from pan state and mode changes. */
 function setupCursorEvents(
   canvas: HTMLCanvasElement,
   renderer: Renderer,
@@ -206,7 +241,6 @@ function setupCursorEvents(
   });
 }
 
-/** Wire top-level modal-open events and keyboard focus requests. */
 function setupModalRouting(
   modals: ReturnType<typeof setupModals>,
   state: GameState,
@@ -222,7 +256,6 @@ function setupModalRouting(
 }
 
 
-/** Wire sidebar resize-handle drag logic. */
 function setupSidebarResize(
   container: HTMLElement,
   renderer: Renderer,
@@ -259,12 +292,10 @@ function setupSidebarResize(
   });
 }
 
-/** Wire machine picker popup, mouse tracking, and E key toggle. */
 function setupMachinePicker(
   container: HTMLElement,
   state: GameState,
   canvas: HTMLCanvasElement,
-  getFocusMode: () => FocusMode,
 ) {
   const picker = container.querySelector('bt-machine-picker') as MachinePicker;
   picker.init(state);
@@ -276,30 +307,25 @@ function setupMachinePicker(
     mouseY = e.clientY;
   });
 
-  window.addEventListener('keydown', (e) => {
-    if ((e.key === 'e' || e.key === 'E') && getFocusMode() === 'editor') {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      e.preventDefault();
+  onGameEvent('editorKeyPress', ({ key, preventDefault }) => {
+    if (key === 'e' || key === 'E') {
+      preventDefault();
       picker.toggle(mouseX, mouseY);
     }
-    if (e.key === 'Escape') {
+    if (key === 'Escape') {
       picker.hide();
     }
   });
 }
 
-/**
- * Mount a Bashtorio game instance into a container element.
- */
 export async function mount(config: BashtorioConfig): Promise<BashtorioInstance> {
-  const { container, assetsPath, linuxImage = 'linux4.iso', stateImage, filesystemUrl, basefs, relayUrl, soundAssetsUrl, onBootStatus, onReady, onError } = config;
+  const { container, vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, onBootStatus, onReady, onError } = config;
 
-  // Create DOM structure
   container.innerHTML = `
     <div class="bashtorio-root">
       <div class="bashtorio-boot">
         <div class="boot-content">
-          <h1>Ba<span class="boot-sh">sh</span>torio</h1>
+          <h1 class="boot-title">ba<span class="boot-sh">sh</span>torio<span class="boot-terminal-cursor">_</span></h1>
           <p class="boot-subtitle">A Unix Pipe Factory Game</p>
           <div class="boot-status">Initializing...</div>
           <div class="boot-terminal">
@@ -350,6 +376,9 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       <bt-latch-modal></bt-latch-modal>
       <bt-sink-modal></bt-sink-modal>
       <bt-tone-modal></bt-tone-modal>
+      <bt-speak-modal></bt-speak-modal>
+      <bt-screen-modal></bt-screen-modal>
+      <bt-byte-modal></bt-byte-modal>
 
       <!-- Utility Modals (custom elements) -->
       <bt-network-modal></bt-network-modal>
@@ -368,11 +397,8 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   const screenContainer = container.querySelector('.screen-container') as HTMLElement;
   const gameScreen = container.querySelector('.bashtorio-game') as HTMLElement;
   const canvas = container.querySelector('.game-canvas') as HTMLCanvasElement;
-  const toolbar = container.querySelector('.bashtorio-toolbar') as HTMLElement;
-  const systembar = container.querySelector('.bashtorio-systembar') as HTMLElement;
   const gameTerminal = container.querySelector('.game-terminal') as HTMLElement;
 
-  // Create state
   const settings = loadSettings();
   const state = createInitialState();
   state.timescale = settings.speed;
@@ -383,15 +409,19 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   };
 
   try {
-    // Create and initialize VM via singleton
+    // Prefetch 9p filesystem chunks in the background (don't await — runs alongside boot)
+    if (rootfsManifest) {
+      prefetch9pFiles(vmAssetsUrl, rootfsManifest).catch(e => console.warn('[Prefetch] 9p prefetch failed:', e))
+    }
+
     await vm.initVM({
-      assetsPath,
-      linuxImage,
-      stateImage,
-      filesystemUrl,
-      basefs,
+      vmAssetsUrl,
+      bootIso,
+      vmSnapshot,
+      rootfsBaseUrl,
+      rootfsManifest,
       screenContainer,
-      relayUrl,
+      networkRelayUrl,
       onStatus: setStatus,
     });
 
@@ -406,23 +436,21 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
 
     const toast = container.querySelector('bt-toast') as Toast;
 
-    // Initialize sound system (non-blocking)
     initSound({
-      assetsUrl: soundAssetsUrl || `${assetsPath}/sounds`,
+      assetsUrl: soundsUrl || `${vmAssetsUrl}/sounds`,
       muted: settings.muted,
       ambientVolume: settings.ambientVolume,
       machineVolume: settings.machineVolume,
     });
     connectSoundEvents(settings);
     connectToneEvents();
+    connectSpeechEvents();
     loadSounds().then(() => {
       startLoop('editingAmbient');
     }).catch(e => console.warn('[Sound] Init failed:', e));
 
-    // Small delay before transitioning
     await new Promise(r => setTimeout(r, 500));
 
-    // Terminal collapse toggle
     const terminalPanel = container.querySelector('.bashtorio-terminal') as HTMLElement;
     const terminalToggle = container.querySelector('.terminal-toggle') as HTMLElement;
     const terminalToggleIcon = container.querySelector('.terminal-toggle-icon') as HTMLElement;
@@ -431,49 +459,34 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       terminalToggleIcon.textContent = collapsed ? '▶' : '▼';
     });
 
-    // Move terminal to game view and make it focusable
     gameTerminal.appendChild(screenContainer);
     screenContainer.setAttribute('tabindex', '0');
 
-    // Click to focus the terminal
     screenContainer.addEventListener('click', () => {
       screenContainer.focus();
     });
 
-    const { getFocusMode } = setupKeyboardRouter(toast, screenContainer);
+    setupKeyboardRouter(toast, screenContainer);
 
-    // Hide boot, show game
     bootScreen.style.display = 'none';
     gameScreen.style.display = 'grid';
 
-    // Create renderer
     const renderer = new Renderer({ canvas });
-
-    // Modals are initialized after input handler is created (see below)
-    let modals: ReturnType<typeof setupModals>;
-
-    // Stats panel (ref needed for update() in animation loop)
     const statsPanel = container.querySelector('bt-stats-panel') as StatsPanel;
 
-    // Create editor (game logic: placement, erase, configure) and input (DOM → events)
-    // Editor wires itself to events in the constructor - no further ref needed.
-    new Editor(state);
+    new Editor(state); // wires itself to events in constructor
     const input = new InputHandler(state, renderer, canvas);
     input.init();
 
-    // Wire camera event handlers
     setupCameraEvents();
-
-    // Set up modals (after input handler, since modals need input for save handlers)
-    modals = setupModals(container, acknowledgements);
-
-    // Wire simulation-layer event listeners
+    const modals = setupModals(container, acknowledgements);
     setupSimulationEvents(state, settings);
+    new Toolbar(
+      container.querySelector('.bashtorio-toolbar') as HTMLElement,
+      container.querySelector('.bashtorio-systembar') as HTMLElement,
+      state,
+    );
 
-    // Create toolbar UI
-    new Toolbar(toolbar, systembar, state);
-
-    // Wire save/load handlers
     setupSaveLoadHandlers(state);
 
     setupCursorEvents(canvas, renderer, state);
@@ -484,27 +497,18 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       play('deny');
     });
 
-    // Now that toolbar is populated, resize canvas and initialize grid
     renderer.handleResize(state);
     cam.updateCanvasSize(canvas.width, canvas.height);
     initGrid();
 
-    // Load the sample preset by default
     emitGameEvent('loadPresetByName', { id: 'sample' });
-
-    // Check URL for factory param and load if present
     emitGameEvent('requestLoadURL');
-
-    // Set initial cursor based on mode
     renderer.updateCursor(state.currentMode);
-
-    // Initialize network UI state
     modals.updateNetworkUI();
 
     setupSidebarResize(container, renderer, state, canvas);
-    setupMachinePicker(container, state, canvas, getFocusMode);
+    setupMachinePicker(container, state, canvas);
 
-    // Animation loop
     let running = true;
     function animate() {
       if (!running) return;
@@ -530,13 +534,12 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         vm.destroyVM();
         destroySound();
         destroyTones();
+        destroySpeech();
         destroyGameEvents();
         container.innerHTML = '';
       },
       downloadState: () => vm.downloadState(),
     };
-
-    window.addEventListener('beforeunload', () => instance.destroy());
 
     onReady?.();
     return instance;

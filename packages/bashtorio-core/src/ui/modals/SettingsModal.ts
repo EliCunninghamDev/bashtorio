@@ -42,11 +42,11 @@ export class SettingsModal extends BaseModal {
         </div>
         <div class="form-group">
           <label>Ambient Volume: <span class="ambient-vol-value">100%</span></label>
-          <input type="range" class="ambient-vol-slider" min="0" max="1" step="0.05" value="1">
+          <input type="range" class="styled-slider ambient-vol-slider" min="0" max="1" step="0.05" value="1">
         </div>
         <div class="form-group">
           <label>Machine Volume: <span class="machine-vol-value">100%</span></label>
-          <input type="range" class="machine-vol-slider" min="0" max="1" step="0.05" value="1">
+          <input type="range" class="styled-slider machine-vol-slider" min="0" max="1" step="0.05" value="1">
         </div>
         <div class="modal-buttons">
           <button class="ack-open-btn">Acknowledgements</button>

@@ -9,17 +9,23 @@ export class ClockModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Clock</h3>
-        <p class="modal-description">Emits a byte at regular intervals. Ignores input.</p>
-        <div class="form-group clock-byte-input-mount"></div>
-        <div class="form-group">
-          <label>Interval (ms):</label>
-          <input type="number" class="clock-interval" min="50" max="30000" step="50" value="1000">
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Clock</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Emits a byte at regular intervals. Ignores input.</p>
+            <div class="form-group clock-byte-input-mount"></div>
+            <div class="form-group">
+              <label>Interval (ms):</label>
+              <input type="number" class="clock-interval" min="50" max="30000" step="50" value="1000">
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

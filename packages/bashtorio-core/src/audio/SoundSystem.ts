@@ -1,14 +1,46 @@
-/** Sound system - module-level singleton */
+/** Sound system - module-level singleton (Web Audio API) */
 
 import { onGameEvent, emitGameEvent, type GameEvent } from '../events/bus';
 import type { Settings } from '../util/settings';
 import { saveSettings } from '../util/settings';
 
-const SOUND_NAMES = ['place', 'simulationStart', 'simulationEnd', 'select', 'erase', 'configureStart', 'deny', 'simulationAmbient', 'editingAmbient', 'shellType', 'shellTypeEnter', 'sinkReceive', 'streamWrite', 'pack', 'drumKick', 'drumSnare', 'drumHat', 'drumTom'] as const;
+// ── Sound manifest ─────────────────────────────────────────────────
 
-export type SoundName = (typeof SOUND_NAMES)[number];
+interface SoundDef {
+  variants?: number;
+  ambient?: boolean;
+}
 
-const AMBIENT_SOUNDS: ReadonlySet<SoundName> = new Set(['editingAmbient', 'simulationAmbient']);
+const SOUND_MANIFEST = {
+  place:              {},
+  simulationStart:    {},
+  simulationEnd:      {},
+  select:             {},
+  erase:              {},
+  configureStart:     {},
+  deny:               {},
+  simulationAmbient:  { ambient: true },
+  editingAmbient:     { ambient: true },
+  shellType:          { variants: 6 },
+  shellTypeEnter:     {},
+  sinkReceive:        {},
+  streamWrite:        { variants: 3 },
+  pack:               {},
+  drumKick:           {},
+  drumSnare:          {},
+  drumHat:            {},
+  drumTom:            {},
+} as const;
+
+export type SoundName = keyof typeof SOUND_MANIFEST;
+
+const SOUND_NAMES = Object.keys(SOUND_MANIFEST) as SoundName[];
+
+function soundDef(name: SoundName): SoundDef {
+  return SOUND_MANIFEST[name] as SoundDef;
+}
+
+// ── Event → sound mappings ─────────────────────────────────────────
 
 interface SoundMapping {
   sound: SoundName;
@@ -28,12 +60,6 @@ const SOUND_MAP: Partial<Record<GameEvent, SoundMapping>> = {
 
 const KEYPRESS_MIN_INTERVAL = 80;
 
-/** Sounds with numbered file variants (e.g. shellType1.mp3 ... shellType6.mp3) */
-const SOUND_VARIANTS: Partial<Record<SoundName, number>> = {
-  shellType: 6,
-  streamWrite: 3,
-};
-
 const LOOP_MAP: Partial<Record<GameEvent, ({ startLoop: SoundName } | { stopLoop: SoundName })[]>> = {
   simulationStarted: [{ startLoop: 'simulationAmbient' }, { stopLoop: 'editingAmbient' }],
   simulationEnded: [{ stopLoop: 'simulationAmbient' }, { startLoop: 'editingAmbient' }],
@@ -46,12 +72,18 @@ export interface SoundSystemConfig {
   machineVolume?: number;
 }
 
-// ── Module-level state ──────────────────────────────────────────────
+// ── Module-level state ─────────────────────────────────────────────
 
-let sounds = new Map<SoundName, HTMLAudioElement>();
-let variants = new Map<SoundName, HTMLAudioElement[]>();
-let loops = new Map<SoundName, HTMLAudioElement>();
+let ctx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+let ambientGain: GainNode | null = null;
+let machineGain: GainNode | null = null;
+
+let buffers = new Map<SoundName, AudioBuffer>();
+let variantBuffers = new Map<SoundName, AudioBuffer[]>();
+let activeLoops = new Map<SoundName, AudioBufferSourceNode>();
 let lastPlayTime = new Map<SoundName, number>();
+
 let assetsUrl = '';
 let _muted = false;
 let _ambientVolume = 1;
@@ -59,31 +91,30 @@ let _machineVolume = 1;
 let listeners: ((sound: SoundName) => void)[] = [];
 let unsubscribers: (() => void)[] = [];
 
-// ── Private helpers ─────────────────────────────────────────────────
+// ── Private helpers ────────────────────────────────────────────────
 
-function applyAmbientVolume(): void {
-  const v = _ambientVolume;
-  for (const name of AMBIENT_SOUNDS) {
-    const audio = sounds.get(name);
-    if (audio) audio.volume = v;
-    const loop = loops.get(name);
-    if (loop) loop.volume = v;
+function ensureContext(): AudioContext {
+  if (!ctx) {
+    ctx = new AudioContext();
+    masterGain = ctx.createGain();
+    ambientGain = ctx.createGain();
+    machineGain = ctx.createGain();
+    ambientGain.connect(masterGain);
+    machineGain.connect(masterGain);
+    masterGain.connect(ctx.destination);
+    masterGain.gain.value = _muted ? 0 : 1;
+    ambientGain.gain.value = _ambientVolume;
+    machineGain.gain.value = _machineVolume;
   }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
 }
 
-function applyMachineVolume(): void {
-  const v = _machineVolume;
-  for (const [name, audio] of sounds) {
-    if (!AMBIENT_SOUNDS.has(name)) audio.volume = v;
-  }
-  for (const variantList of variants.values()) {
-    for (const audio of variantList) {
-      audio.volume = v;
-    }
-  }
+function channelFor(name: SoundName): GainNode {
+  return soundDef(name).ambient ? ambientGain! : machineGain!;
 }
 
-// ── Public API ──────────────────────────────────────────────────────
+// ── Public API ─────────────────────────────────────────────────────
 
 export function initSound(config: SoundSystemConfig): void {
   assetsUrl = config.assetsUrl.replace(/\/$/, '');
@@ -93,24 +124,27 @@ export function initSound(config: SoundSystemConfig): void {
 }
 
 export async function loadSounds(): Promise<void> {
+  const ac = ensureContext();
   let totalFiles = 0;
   let loadedFiles = 0;
 
-  const loadOne = async (url: string): Promise<HTMLAudioElement | null> => {
+  const cache = await caches.open('bashtorio-sounds').catch(() => null);
+
+  const loadOne = async (url: string): Promise<AudioBuffer | null> => {
     totalFiles++;
     try {
-      const audio = new Audio(url);
-      audio.preload = 'auto';
-      await new Promise<void>((resolve) => {
-        audio.addEventListener('canplaythrough', () => resolve(), { once: true });
-        audio.addEventListener('error', () => {
-          console.warn(`[SoundSystem] Failed to load sound: ${url}`);
-          resolve();
-        }, { once: true });
-        audio.load();
-      });
+      let resp = cache ? await cache.match(url) : undefined;
+      if (!resp) {
+        resp = await fetch(url);
+        if (!resp.ok) {
+          console.warn(`[SoundSystem] Failed to fetch: ${url} (${resp.status})`);
+          return null;
+        }
+        if (cache) await cache.put(url, resp.clone());
+      }
+      const audioBuf = await ac.decodeAudioData(await resp.arrayBuffer());
       loadedFiles++;
-      return audio;
+      return audioBuf;
     } catch (e) {
       console.warn(`[SoundSystem] Error loading sound ${url}:`, e);
       return null;
@@ -118,27 +152,22 @@ export async function loadSounds(): Promise<void> {
   };
 
   const loadPromises = SOUND_NAMES.map(async (name) => {
-    const variantCount = SOUND_VARIANTS[name];
-    if (variantCount) {
-      const variantAudios: HTMLAudioElement[] = [];
-      for (let i = 1; i <= variantCount; i++) {
-        const audio = await loadOne(`${assetsUrl}/${name}${i}.mp3`);
-        if (audio) variantAudios.push(audio);
+    const def = soundDef(name);
+    if (def.variants) {
+      const loaded: AudioBuffer[] = [];
+      for (let i = 1; i <= def.variants; i++) {
+        const buf = await loadOne(`${assetsUrl}/${name}${i}.mp3`);
+        if (buf) loaded.push(buf);
       }
-      if (variantAudios.length > 0) {
-        variants.set(name, variantAudios);
-      }
+      if (loaded.length > 0) variantBuffers.set(name, loaded);
     } else {
-      const audio = await loadOne(`${assetsUrl}/${name}.mp3`);
-      if (audio) sounds.set(name, audio);
+      const buf = await loadOne(`${assetsUrl}/${name}.mp3`);
+      if (buf) buffers.set(name, buf);
     }
   });
 
   await Promise.all(loadPromises);
   console.log(`[SoundSystem] Loaded ${loadedFiles}/${totalFiles} sounds`);
-
-  applyAmbientVolume();
-  applyMachineVolume();
 }
 
 export function connectSoundEvents(settings?: Settings): void {
@@ -233,51 +262,53 @@ export function connectSoundEvents(settings?: Settings): void {
 
 export function play(sound: SoundName, options?: { randomPitch?: number; pitch?: number }): void {
   if (_muted) return;
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
 
-  const variantList = variants.get(sound);
-  const audio = variantList
-    ? variantList[Math.floor(Math.random() * variantList.length)]
-    : sounds.get(sound);
-  if (audio) {
-    const clone = audio.cloneNode() as HTMLAudioElement;
-    clone.volume = audio.volume;
+  const variants = variantBuffers.get(sound);
+  const buffer = variants
+    ? variants[Math.floor(Math.random() * variants.length)]
+    : buffers.get(sound);
+  if (!buffer) return;
 
-    if (options?.pitch) {
-      clone.playbackRate = options.pitch;
-    } else if (options?.randomPitch) {
-      const variation = (Math.random() - 0.5) * 2 * options.randomPitch;
-      clone.playbackRate = 1 + variation;
-    }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
 
-    clone.play().catch(() => {});
+  if (options?.pitch) {
+    source.playbackRate.value = options.pitch;
+  } else if (options?.randomPitch) {
+    const variation = (Math.random() - 0.5) * 2 * options.randomPitch;
+    source.playbackRate.value = 1 + variation;
   }
 
+  source.connect(channelFor(sound));
+  source.start(0);
   listeners.forEach(cb => cb(sound));
 }
 
 export function startLoop(sound: SoundName): void {
-  if (loops.has(sound)) return;
+  if (activeLoops.has(sound)) return;
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
 
-  const audio = sounds.get(sound);
-  if (!audio) return;
+  const buffer = buffers.get(sound);
+  if (!buffer) return;
 
-  const loop = audio.cloneNode() as HTMLAudioElement;
-  loop.loop = true;
-  loop.volume = audio.volume;
-  loops.set(sound, loop);
-
-  if (!_muted) {
-    loop.play().catch(() => {});
-  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.loop = true;
+  source.connect(channelFor(sound));
+  activeLoops.set(sound, source);
+  source.start(0);
 }
 
 export function stopLoop(sound: SoundName): void {
-  const loop = loops.get(sound);
-  if (!loop) return;
+  const source = activeLoops.get(sound);
+  if (!source) return;
 
-  loop.pause();
-  loop.currentTime = 0;
-  loops.delete(sound);
+  source.stop();
+  source.disconnect();
+  activeLoops.delete(sound);
 }
 
 export function isMuted(): boolean {
@@ -286,12 +317,8 @@ export function isMuted(): boolean {
 
 export function setMuted(muted: boolean): void {
   _muted = muted;
-  for (const loop of loops.values()) {
-    if (muted) {
-      loop.pause();
-    } else {
-      loop.play().catch(() => {});
-    }
+  if (masterGain && ctx) {
+    masterGain.gain.setValueAtTime(muted ? 0 : 1, ctx.currentTime);
   }
 }
 
@@ -302,24 +329,36 @@ export function toggleMute(): boolean {
 
 export function setAmbientVolume(volume: number): void {
   _ambientVolume = Math.max(0, Math.min(1, volume));
-  applyAmbientVolume();
+  if (ambientGain && ctx) {
+    ambientGain.gain.setValueAtTime(_ambientVolume, ctx.currentTime);
+  }
 }
 
 export function setMachineVolume(volume: number): void {
   _machineVolume = Math.max(0, Math.min(1, volume));
-  applyMachineVolume();
+  if (machineGain && ctx) {
+    machineGain.gain.setValueAtTime(_machineVolume, ctx.currentTime);
+  }
 }
 
 export function destroySound(): void {
-  for (const unsub of unsubscribers) {
-    unsub();
-  }
+  for (const unsub of unsubscribers) unsub();
   unsubscribers = [];
-  for (const loop of loops.values()) {
-    loop.pause();
+
+  for (const source of activeLoops.values()) {
+    source.stop();
+    source.disconnect();
   }
-  loops.clear();
-  sounds.clear();
-  variants.clear();
+  activeLoops.clear();
+  buffers.clear();
+  variantBuffers.clear();
   listeners = [];
+
+  if (ctx) {
+    ctx.close();
+    ctx = null;
+    masterGain = null;
+    ambientGain = null;
+    machineGain = null;
+  }
 }

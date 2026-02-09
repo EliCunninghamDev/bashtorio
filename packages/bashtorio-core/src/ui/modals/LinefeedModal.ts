@@ -7,16 +7,22 @@ export class LinefeedModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Linefeed Emitter</h3>
-        <p class="modal-description">Set the interval between line feed emissions.</p>
-        <div class="form-group">
-          <label>Interval (ms):</label>
-          <input type="number" class="lf-interval" min="50" max="10000" step="50" value="500">
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Linefeed Emitter</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Set the interval between line feed emissions.</p>
+            <div class="form-group">
+              <label>Interval (ms):</label>
+              <input type="number" class="lf-interval" min="50" max="10000" step="50" value="500">
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

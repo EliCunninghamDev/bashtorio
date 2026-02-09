@@ -7,29 +7,35 @@ export class MathModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Math</h3>
-        <p class="modal-description">Apply a byte arithmetic or bitwise operation to each received byte.</p>
-        <div class="form-group">
-          <label>Operation:</label>
-          <select class="math-op modal-select">
-            <option value="add">Add (+)</option>
-            <option value="sub">Subtract (-)</option>
-            <option value="mul">Multiply (*)</option>
-            <option value="mod">Modulo (%)</option>
-            <option value="xor">XOR (^)</option>
-            <option value="and">AND (&amp;)</option>
-            <option value="or">OR (|)</option>
-            <option value="not">NOT (~)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Operand (0-255):</label>
-          <input type="number" class="math-operand" min="0" max="255" step="1" value="1">
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Math</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Apply a byte arithmetic or bitwise operation to each received byte.</p>
+            <div class="form-group">
+              <label>Operand (0-255):</label>
+              <input type="number" class="math-operand" min="0" max="255" step="1" value="1">
+            </div>
+            <div class="form-group">
+              <label>Operation:</label>
+              <div class="radio-group radio-group--compact math-op">
+                <label class="radio-option"><input type="radio" name="math-op" value="add"><span>+</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="sub"><span>−</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="mul"><span>×</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="mod"><span>%</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="xor"><span>XOR</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="and"><span>AND</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="or"><span>OR</span></label>
+                <label class="radio-option"><input type="radio" name="math-op" value="not"><span>NOT</span></label>
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;
@@ -37,15 +43,14 @@ export class MathModal extends BaseModal {
 
   configure(machine: MathMachine) {
     this.machine = machine;
-    this.qs<HTMLSelectElement>('.math-op').value = machine.mathOp;
+    this.qs<HTMLInputElement>(`.math-op input[value="${machine.mathOp}"]`).checked = true;
     this.qs<HTMLInputElement>('.math-operand').value = String(machine.mathOperand);
     this.show();
-    this.qs<HTMLSelectElement>('.math-op').focus();
   }
 
   protected save() {
     if (this.machine) {
-      this.machine.mathOp = this.qs<HTMLSelectElement>('.math-op').value as MathOp;
+      this.machine.mathOp = this.qs<HTMLInputElement>('.math-op input:checked').value as MathOp;
       this.machine.mathOperand = Math.max(0, Math.min(255, parseInt(this.qs<HTMLInputElement>('.math-operand').value) || 0));
     }
     this.hide();

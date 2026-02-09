@@ -22,6 +22,7 @@ export const PLACEABLE_COLUMNS: PlaceableColumn[] = [
     { id: 'keyboard', icon: '⌨️', label: 'Key', key: 'K' },
     { id: 'linefeed', icon: '↵', label: 'LF', key: 'C' },
     { id: 'clock', icon: '🕐', label: 'Clock', key: 'O' },
+    { id: 'byte', icon: '🔢', label: 'Byte', key: '' },
   ]},
   { label: 'Process', items: [
     { id: 'command', icon: '🖥️', label: 'Shell', key: 'F' },
@@ -41,6 +42,8 @@ export const PLACEABLE_COLUMNS: PlaceableColumn[] = [
     { id: 'sevenseg', icon: '🔢', label: '7Seg', key: 'Z' },
     { id: 'drum', icon: '🥁', label: 'Drum', key: 'E' },
     { id: 'tone', icon: '🔊', label: 'Tone', key: '' },
+    { id: 'speak', icon: '🗣️', label: 'Talk', key: '' },
+    { id: 'screen', icon: '🖥️', label: 'Screen', key: '' },
   ]},
 ];
 

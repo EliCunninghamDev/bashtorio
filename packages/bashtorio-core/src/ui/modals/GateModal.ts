@@ -10,20 +10,28 @@ export class GateModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Gate</h3>
-        <p class="modal-description">Data passes through only when a control signal opens the gate. Gate closes after one byte passes.</p>
-        <div class="form-group">
-          <label>Data comes FROM:</label>
-          <div class="gate-data-dir-mount"></div>
-        </div>
-        <div class="form-group">
-          <label>Control comes FROM:</label>
-          <div class="gate-control-dir-mount"></div>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Gate</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Data passes through only when a control signal opens the gate. Gate closes after one byte passes.</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Data comes FROM:</label>
+                <div class="gate-data-dir-mount"></div>
+              </div>
+              <div class="form-group">
+                <label>Control comes FROM:</label>
+                <div class="gate-control-dir-mount"></div>
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

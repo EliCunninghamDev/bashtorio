@@ -33,6 +33,9 @@ const PLACEABLE_TO_MACHINE: Partial<Record<PlaceableType, MachineType>> = {
     sevenseg: MachineType.SEVENSEG,
     drum: MachineType.DRUM,
     tone: MachineType.TONE,
+    speak: MachineType.SPEAK,
+    screen: MachineType.SCREEN,
+    byte: MachineType.BYTE,
 };
 
 /** Machines that open their config modal immediately on placement */
@@ -53,6 +56,9 @@ const CONFIG_ON_PLACE = new Set<MachineType>([
     MachineType.CLOCK,
     MachineType.LATCH,
     MachineType.TONE,
+    MachineType.SPEAK,
+    MachineType.SCREEN,
+    MachineType.BYTE,
 ]);
 
 export class Editor {

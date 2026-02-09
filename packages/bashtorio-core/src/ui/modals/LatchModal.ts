@@ -10,20 +10,28 @@ export class LatchModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Latch</h3>
-        <p class="modal-description">Stores the last data byte received. Emits stored byte when a control signal arrives.</p>
-        <div class="form-group">
-          <label>Data comes FROM:</label>
-          <div class="latch-data-dir-mount"></div>
-        </div>
-        <div class="form-group">
-          <label>Control comes FROM:</label>
-          <div class="latch-control-dir-mount"></div>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Latch</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Stores the last data byte received. Emits stored byte when a control signal arrives.</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Data comes FROM:</label>
+                <div class="latch-data-dir-mount"></div>
+              </div>
+              <div class="form-group">
+                <label>Control comes FROM:</label>
+                <div class="latch-control-dir-mount"></div>
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

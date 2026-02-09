@@ -1,6 +1,5 @@
 import {
   GRID_SIZE,
-  PACKET_SPEED,
   Direction,
   CellType,
   MachineType,
@@ -12,6 +11,7 @@ import {
   type MachineCell,
   type SplitterMachine,
   type MathOp,
+  SINK_DRAIN_SLOTS,
 } from './types';
 
 import type { GameState } from './state';
@@ -54,6 +54,11 @@ export function setupSimulationEvents(state: GameState, settings: Settings): voi
     saveSettings({ ...settings, speed });
     emitGameEvent('speedChanged', { speed });
   });
+
+  onGameEvent('beltSpeedSet', ({ beltSpeed }) => {
+    state.beltSpeed = beltSpeed;
+    emitGameEvent('beltSpeedChanged', { beltSpeed });
+  });
 }
 
 export function startSimulation(state: GameState): void {
@@ -70,6 +75,11 @@ export function startSimulation(state: GameState): void {
       case MachineType.SOURCE:
         machine.sourcePos = 0;
         machine.lastEmitTime = 0;
+        machine.gapRemaining = 0;
+        break;
+      case MachineType.SINK:
+        machine.drainRing = [];
+        machine.drainHead = 0;
         break;
       case MachineType.COMMAND:
         machine.pendingInput = '';
@@ -102,6 +112,7 @@ export function startSimulation(state: GameState): void {
       case MachineType.CONSTANT:
         machine.constantPos = 0;
         machine.lastEmitTime = 0;
+        machine.gapRemaining = 0;
         break;
       case MachineType.COUNTER:
         machine.counterCount = 0;
@@ -156,6 +167,20 @@ export function startSimulation(state: GameState): void {
       case MachineType.TONE:
         emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform });
         break;
+      case MachineType.SPEAK:
+        machine.accumulatedBuffer = '';
+        machine.displayText = '';
+        machine.displayTime = 0;
+        break;
+      case MachineType.SCREEN:
+        machine.writePos = 0;
+        machine.buffer.fill(0);
+        break;
+      case MachineType.BYTE:
+        machine.bytePos = 0;
+        machine.lastEmitTime = 0;
+        machine.gapRemaining = 0;
+        break;
       // SINK, NULL - no runtime state to reset
     }
   }
@@ -165,7 +190,7 @@ export function stopSimulation(state: GameState): void {
   state.running = false;
   state.orphanedPackets = [];
 
-  // Stop active FIFO streams and silence tones
+  // Stop active FIFO streams, silence tones, cancel speech
   for (const machine of machines) {
     if (machine.type === MachineType.COMMAND && machine.stream && machine.activeJobId) {
       vm.stopStream(machine.activeJobId);
@@ -176,6 +201,7 @@ export function stopSimulation(state: GameState): void {
       emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform });
     }
   }
+  emitGameEvent('speakCancel');
 }
 
 export function toggleSimulation(state: GameState): void {
@@ -423,6 +449,15 @@ function applyMathOp(op: MathOp, value: number, operand: number): number {
 
 function deliverToMachine(machine: Machine, content: string, fromDir?: Direction): void {
   if (machine.type === MachineType.SINK) {
+    // Push into circular drain-animation ring
+    const entry = { char: content, time: now };
+    if (machine.drainRing.length < SINK_DRAIN_SLOTS) {
+      machine.drainRing.push(entry);
+      machine.drainHead = machine.drainRing.length % SINK_DRAIN_SLOTS;
+    } else {
+      machine.drainRing[machine.drainHead] = entry;
+      machine.drainHead = (machine.drainHead + 1) % SINK_DRAIN_SLOTS;
+    }
     emitGameEvent('sinkOutput', { sink: machine, content });
     emitGameEvent('sinkReceive', { char: content });
   } else if (machine.type === MachineType.DISPLAY) {
@@ -587,12 +622,35 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
     machine.lastCommandTime = now;
     emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: content.charCodeAt(0), waveform: machine.waveform });
   }
+  // SPEAK: accumulate bytes, speak on delimiter (terminal)
+  else if (machine.type === MachineType.SPEAK) {
+    if (content === machine.speakDelimiter) {
+      if (machine.accumulatedBuffer.length > 0) {
+        machine.displayText = machine.accumulatedBuffer;
+        machine.displayTime = now;
+        emitGameEvent('speak', { text: machine.accumulatedBuffer, rate: machine.speakRate, pitch: machine.speakPitch });
+        machine.accumulatedBuffer = '';
+        machine.lastCommandTime = now;
+      }
+    } else {
+      machine.accumulatedBuffer += content;
+    }
+  }
+  // SCREEN: write bytes into circular buffer (terminal, no re-emission)
+  else if (machine.type === MachineType.SCREEN) {
+    machine.lastCommandTime = now;
+    for (let i = 0; i < content.length; i++) {
+      machine.buffer[machine.writePos] = content.charCodeAt(i);
+      machine.writePos = (machine.writePos + 1) % machine.buffer.length;
+    }
+  }
   // KEYBOARD: output-only, no-op on receive
 }
 
+// A packet must never move more than one cell per frame, or it skips cells.
+const MAX_PACKET_STEP = GRID_SIZE - 1;
 const ORPHAN_GRAVITY = 0.15;
 const ORPHAN_MAX_AGE = 10000;
-const ORPHAN_TOSS = PACKET_SPEED * 1.5;
 
 function orphanPacket(state: GameState, packet: Packet, cellX: number, cellY: number): void {
 	const worldX = cellX * GRID_SIZE + packet.offsetX;
@@ -603,8 +661,8 @@ function orphanPacket(state: GameState, packet: Packet, cellX: number, cellY: nu
 		id: state.packetId++,
 		worldX,
 		worldY,
-		vx: delta.dx * ORPHAN_TOSS,
-		vy: delta.dy * ORPHAN_TOSS,
+		vx: delta.dx * state.beltSpeed * 1.5,
+		vy: delta.dy * state.beltSpeed * 1.5,
 		content: packet.content,
 		age: 0,
 	});
@@ -633,7 +691,8 @@ function updatePacket(
   packet: Packet,
   deltaTime: number,
 ): boolean {
-  const speed = PACKET_SPEED * state.timescale * (deltaTime / 16);
+  const raw = state.beltSpeed * state.timescale * (deltaTime / 16);
+  const speed = Math.min(raw, MAX_PACKET_STEP);
   const center = GRID_SIZE / 2;
 
   const delta = DirDelta[packet.dir];
@@ -776,11 +835,21 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
   if (!isCellEmpty(state, output.x, output.y)) return false;
 
   if (machine.type === MachineType.SOURCE) {
+    if (machine.sourceText.length === 0) return false;
+    // Gap pause: count down before restarting the loop
+    if (machine.gapRemaining > 0) {
+      machine.gapRemaining -= delta * state.timescale;
+      return false;
+    }
     if (machine.sourcePos < machine.sourceText.length) {
       const char = machine.sourceText[machine.sourcePos];
       createPacket(state, output.x, output.y, char, output.dir);
       machine.sourcePos++;
-
+      // If we just finished and there's a gap, enter gap pause then reset
+      if (machine.sourcePos >= machine.sourceText.length && machine.gapInterval > 0) {
+        machine.gapRemaining = machine.gapInterval;
+        machine.sourcePos = 0;
+      }
       return true;
     }
   } else if (machine.type === MachineType.COMMAND) {
@@ -795,7 +864,7 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
     const adjustedDelay = machine.emitInterval / state.timescale;
     if (now - machine.lastEmitTime > adjustedDelay) {
       createPacket(state, output.x, output.y, '\n', output.dir);
-      machine.lastEmitTime = now;
+      machine.lastEmitTime += adjustedDelay;
       return true;
     }
   } else if (machine.type === MachineType.DUPLICATOR) {
@@ -828,12 +897,24 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
     }
   } else if (machine.type === MachineType.CONSTANT) {
     if (machine.constantText.length === 0) return false;
+    // Gap pause: count down before restarting the loop
+    if (machine.gapRemaining > 0) {
+      machine.gapRemaining -= delta * state.timescale;
+      if (machine.gapRemaining > 0) return false;
+      // gapRemaining is negative = overshoot past gap end; fold into baseline
+      machine.lastEmitTime = now + machine.gapRemaining;
+      machine.gapRemaining = 0;
+    }
     const adjustedDelay = machine.emitInterval / state.timescale;
     if (now - machine.lastEmitTime > adjustedDelay) {
       const char = machine.constantText[machine.constantPos];
       createPacket(state, output.x, output.y, char, output.dir);
       machine.constantPos = (machine.constantPos + 1) % machine.constantText.length;
-      machine.lastEmitTime = now;
+      machine.lastEmitTime += adjustedDelay;
+      // If we just wrapped around and there's a gap, enter gap pause
+      if (machine.constantPos === 0 && machine.gapInterval > 0) {
+        machine.gapRemaining = machine.gapInterval;
+      }
       return true;
     }
   } else if (machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD || machine.type === MachineType.UNPACKER) {
@@ -893,7 +974,27 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       if (!output) return false;
       if (!isCellEmpty(state, output.x, output.y)) return false;
       createPacket(state, output.x, output.y, machine.clockByte, output.dir);
-      machine.lastEmitTime = now;
+      machine.lastEmitTime += adjustedDelay;
+      return true;
+    }
+  } else if (machine.type === MachineType.BYTE) {
+    if (machine.byteData.length === 0) return false;
+    // Gap pause: count down before restarting the loop
+    if (machine.gapRemaining > 0) {
+      machine.gapRemaining -= delta * state.timescale;
+      if (machine.gapRemaining > 0) return false;
+      machine.lastEmitTime = now + machine.gapRemaining;
+      machine.gapRemaining = 0;
+    }
+    const adjustedDelay = machine.emitInterval / state.timescale;
+    if (now - machine.lastEmitTime > adjustedDelay) {
+      const char = String.fromCharCode(machine.byteData[machine.bytePos]);
+      createPacket(state, output.x, output.y, char, output.dir);
+      machine.bytePos = (machine.bytePos + 1) % machine.byteData.length;
+      machine.lastEmitTime += adjustedDelay;
+      if (machine.bytePos === 0 && machine.gapInterval > 0) {
+        machine.gapRemaining = machine.gapInterval;
+      }
       return true;
     }
   } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.REPLACE || machine.type === MachineType.MATH || machine.type === MachineType.LATCH || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
@@ -923,7 +1024,7 @@ export function updateSimulation(
     for (const machine of machines) {
       if (machine.type === MachineType.SOURCE || machine.type === MachineType.COMMAND || machine.type === MachineType.FLIPPER || machine.type === MachineType.DUPLICATOR || machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD || machine.type === MachineType.PACKER || machine.type === MachineType.UNPACKER || machine.type === MachineType.ROUTER || machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.REPLACE || machine.type === MachineType.MATH || machine.type === MachineType.LATCH || machine.type === MachineType.SPLITTER || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
         if (emitFromMachine(state, machine)) {
-          state.lastEmitTime = now;
+          state.lastEmitTime += adjustedDelay;
         }
       }
     }
@@ -931,7 +1032,7 @@ export function updateSimulation(
 
   // Linefeed, constant, and clock machines emit on their own timer
   for (const machine of machines) {
-    if (machine.type === MachineType.LINEFEED || machine.type === MachineType.CONSTANT || machine.type === MachineType.CLOCK) {
+    if (machine.type === MachineType.LINEFEED || machine.type === MachineType.CONSTANT || machine.type === MachineType.CLOCK || machine.type === MachineType.BYTE) {
       emitFromMachine(state, machine);
     }
   }

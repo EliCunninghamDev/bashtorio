@@ -7,26 +7,32 @@ export class CommandModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content cmd-modal-content">
-        <div class="cmd-terminal">
-          <div class="cmd-terminal-header">
-            <span class="cmd-terminal-title">Shell Machine</span>
-            <div class="cmd-terminal-controls">
-              <label class="cmd-autostart-label">
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel cmd-terminal">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Shell Machine</span>
+            <div class="machine-panel-controls">
+              <label class="machine-panel-check">
                 <input type="checkbox" class="cmd-autostart">
                 <span>Auto-run</span>
               </label>
-              <label class="cmd-autostart-label">
+              <label class="machine-panel-check">
                 <input type="checkbox" class="cmd-stream">
                 <span>Stream</span>
               </label>
-              <select class="cmd-input-mode modal-select">
-                <option value="pipe">Pipe</option>
-                <option value="args">Args</option>
-              </select>
+              <div class="radio-group cmd-input-mode">
+                <label class="radio-option">
+                  <input type="radio" name="cmd-input-mode" value="pipe">
+                  <span>Pipe</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="cmd-input-mode" value="args">
+                  <span>Args</span>
+                </label>
+              </div>
             </div>
           </div>
-          <div class="cmd-terminal-body">
+          <div class="machine-panel-body">
             <div class="cmd-field">
               <label class="cmd-field-label">Command</label>
               <textarea class="cmd-input cmd-command" placeholder="shell command" spellcheck="false" rows="1"></textarea>
@@ -36,7 +42,7 @@ export class CommandModal extends BaseModal {
               <input type="text" class="cmd-input cmd-cwd" placeholder="/" spellcheck="false">
             </div>
           </div>
-          <div class="cmd-terminal-footer">
+          <div class="machine-panel-footer">
             <button data-cancel>Cancel</button>
             <button data-save>Save</button>
           </div>
@@ -47,14 +53,15 @@ export class CommandModal extends BaseModal {
 
   protected setup() {
     const streamCheckbox = this.qs<HTMLInputElement>('.cmd-stream');
-    const inputModeSelect = this.qs<HTMLSelectElement>('.cmd-input-mode');
+    const modeGroup = this.qs('.cmd-input-mode');
 
     streamCheckbox.addEventListener('change', () => {
+      const radios = modeGroup.querySelectorAll<HTMLInputElement>('input[type="radio"]');
       if (streamCheckbox.checked) {
-        inputModeSelect.value = 'pipe';
-        inputModeSelect.disabled = true;
+        this.qs<HTMLInputElement>('.cmd-input-mode input[value="pipe"]').checked = true;
+        radios.forEach(r => r.disabled = true);
       } else {
-        inputModeSelect.disabled = false;
+        radios.forEach(r => r.disabled = false);
       }
     });
   }
@@ -65,8 +72,8 @@ export class CommandModal extends BaseModal {
     this.qs<HTMLTextAreaElement>('.cmd-command').value = machine.command;
     this.qs<HTMLInputElement>('.cmd-autostart').checked = machine.autoStart;
     this.qs<HTMLInputElement>('.cmd-stream').checked = machine.stream;
-    this.qs<HTMLSelectElement>('.cmd-input-mode').value = machine.inputMode || 'pipe';
-    this.qs<HTMLSelectElement>('.cmd-input-mode').disabled = machine.stream;
+    this.qs<HTMLInputElement>(`.cmd-input-mode input[value="${machine.inputMode || 'pipe'}"]`).checked = true;
+    this.qs('.cmd-input-mode').querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach(r => r.disabled = machine.stream);
     this.qs<HTMLInputElement>('.cmd-cwd').value = machine.cwd || '/';
 
     this.show();
@@ -81,7 +88,7 @@ export class CommandModal extends BaseModal {
       this.machine.stream = this.qs<HTMLInputElement>('.cmd-stream').checked;
       this.machine.inputMode = this.qs<HTMLInputElement>('.cmd-stream').checked
         ? 'pipe'
-        : this.qs<HTMLSelectElement>('.cmd-input-mode').value as 'pipe' | 'args';
+        : (this.qs<HTMLInputElement>('.cmd-input-mode input:checked')?.value || 'pipe') as 'pipe' | 'args';
       this.machine.cwd = this.qs<HTMLInputElement>('.cmd-cwd').value.trim() || '/';
     }
     this.hide();

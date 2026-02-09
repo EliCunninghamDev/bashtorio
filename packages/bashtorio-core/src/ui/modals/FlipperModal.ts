@@ -9,16 +9,22 @@ export class FlipperModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Flipper</h3>
-        <p class="modal-description">Rotates output direction clockwise on every received byte.</p>
-        <div class="form-group">
-          <label>Initial Direction:</label>
-          <div class="flipper-dir-mount"></div>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Flipper</span>
+          </div>
+          <div class="machine-panel-body">
+            <p class="modal-description">Rotates output direction clockwise on every received byte.</p>
+            <div class="form-group">
+              <label>Initial Direction:</label>
+              <div class="flipper-dir-mount"></div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

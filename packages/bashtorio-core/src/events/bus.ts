@@ -34,6 +34,7 @@ export interface GameEventMap {
   zoomOut: undefined;
   zoomSet: { scale: number };
   speedSet: { speed: number };
+  beltSpeedSet: { beltSpeed: number };
   startSimulation: undefined;
   endSimulation: undefined;
   clearAll: undefined;
@@ -54,6 +55,7 @@ export interface GameEventMap {
 
   // -- commands.ts (command handler responses) --
   speedChanged: { speed: number };
+  beltSpeedChanged: { beltSpeed: number };
   muteChanged: { muted: boolean };
 
   // -- simulation.ts --
@@ -69,6 +71,8 @@ export interface GameEventMap {
   pack: { machineId: string; length: number };
   drumHit: { sample: number };
   toneNote: { machineId: string; byte: number; waveform: OscillatorType };
+  speak: { text: string; rate: number; pitch: number };
+  speakCancel: undefined;
 
   // -- saveload.ts --
   saveLoaded: { source: string };

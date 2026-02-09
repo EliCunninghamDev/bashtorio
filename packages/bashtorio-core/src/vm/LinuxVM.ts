@@ -2,25 +2,25 @@ import { V86 } from '#v86'
 import type { V86Emulator, V86Config } from '../types/v86';
 
 export interface VMConfig {
-	/** Path to v86 assets (wasm, bios, etc.) */
-	assetsPath: string;
-	/** Linux image filename (default: linux4.iso) */
-	linuxImage?: string;
-	/** Pre-booted state filename (if provided, skips boot) */
-	stateImage?: string;
-	/** 9p filesystem base URL (for Arch Linux etc.) */
-	filesystemUrl?: string;
-	/** 9p basefs JSON manifest - when set, enables 9p-root boot mode */
-	basefs?: string;
+	/** Base URL for v86 assets (wasm, bios, etc.) */
+	vmAssetsUrl: string;
+	/** Bootable Linux ISO filename (default: linux4.iso) */
+	bootIso?: string;
+	/** Pre-booted VM state snapshot file (skips boot when provided) */
+	vmSnapshot?: string;
+	/** Base URL for the 9p rootfs flat directory */
+	rootfsBaseUrl?: string;
+	/** 9p rootfs JSON manifest filename — enables 9p-root boot mode when set */
+	rootfsManifest?: string;
 	/** Container element for the VGA screen */
 	screenContainer: HTMLElement;
-	/** Optional WebSocket relay URL for networking */
-	relayUrl?: string | null;
+	/** WebSocket relay URL for VM networking */
+	networkRelayUrl?: string | null;
 	/** Status callback during boot */
 	onStatus?: (status: string) => void;
 }
 
-/** Per-machine shell session state, stored in /tmp/bashtorio/shN on the guest */
+/** Per-shell session state, stored in /tmp/bashtorio/shN on the guest */
 interface ShellState {
 	id: number;
 	/** Guest filesystem path for this shell's working files */
@@ -32,7 +32,7 @@ interface ShellState {
 /** Tracks an in-flight file-based job */
 interface Job {
 	id: string;
-	machineId: string;
+	shellTag: string;
 	bytesRead: number;
 	done: boolean;
 	exitCode: number | null;
@@ -53,7 +53,7 @@ interface PendingRead {
  *
  * Commands are executed by writing stdin to 9p files, triggering execution
  * via serial0, and polling output/exit files via the emulator's read_file API.
- * Each game machine gets its own shell session with an independent working
+ * Each caller gets its own shell session (keyed by shellTag) with an independent working
  * directory persisted in the guest filesystem.
  *
  * Falls back to serial-marker-based I/O if 9p is unavailable.
@@ -61,7 +61,7 @@ interface PendingRead {
 export class LinuxVM {
 	private emulator: V86Emulator | null = null;
 	private _ready = false;
-	/** Active shell sessions keyed by machineId (e.g. "m_3_5") */
+	/** Active shell sessions keyed by shellTag (e.g. "m_3_5") */
 	private shells = new Map<string, ShellState>();
 	private shellIdCounter = 0;
 	/** Legacy: In-flight command reads keyed by jobId, listening on the serial stream */
@@ -86,31 +86,31 @@ export class LinuxVM {
 	}
 
 	async init(config: VMConfig): Promise<void> {
-		const { assetsPath, linuxImage = 'linux4.iso', stateImage, filesystemUrl, basefs, screenContainer, relayUrl, onStatus = () => {} } = config;
+		const { vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl, rootfsManifest, screenContainer, networkRelayUrl, onStatus = () => {} } = config;
 
 		onStatus('Creating emulator...');
 
 		// Track whether we're using 9p-root boot mode
-		this._fs9pRoot = !!basefs;
+		this._fs9pRoot = !!rootfsManifest;
 
 		return new Promise((resolve, reject) => {
 			const memorySize = 512 * 1024 * 1024;
 
 			let v86Config: V86Config;
 
-			if (basefs) {
+			if (rootfsManifest) {
 				// 9p-root boot: kernel/initramfs from the 9p filesystem, root IS the 9p fs
 				v86Config = {
-					wasm_path: `${assetsPath}/v86.wasm`,
+					wasm_path: `${vmAssetsUrl}/v86.wasm`,
 					memory_size: memorySize,
 					vga_memory_size: 2 * 1024 * 1024,
 					screen_container: screenContainer,
-					bios: { url: `${assetsPath}/seabios.bin` },
-					vga_bios: { url: `${assetsPath}/vgabios.bin` },
+					bios: { url: `${vmAssetsUrl}/seabios.bin` },
+					vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
 					autostart: true,
 					filesystem: {
-						basefs: `${assetsPath}/${basefs}`,
-						baseurl: filesystemUrl || `${assetsPath}/alpine-rootfs-flat/`,
+						basefs: `${vmAssetsUrl}/${rootfsManifest}`,
+						baseurl: rootfsBaseUrl || `${vmAssetsUrl}/alpine-rootfs-flat/`,
 					},
 					bzimage_initrd_from_filesystem: true,
 					cmdline: 'rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0',
@@ -118,36 +118,36 @@ export class LinuxVM {
 			} else {
 				// Legacy CD-ROM boot
 				v86Config = {
-					wasm_path: `${assetsPath}/v86.wasm`,
+					wasm_path: `${vmAssetsUrl}/v86.wasm`,
 					memory_size: memorySize,
 					vga_memory_size: 2 * 1024 * 1024,
 					screen_container: screenContainer,
-					bios: { url: `${assetsPath}/seabios.bin` },
-					vga_bios: { url: `${assetsPath}/vgabios.bin` },
-					cdrom: { url: `${assetsPath}/${linuxImage}` },
+					bios: { url: `${vmAssetsUrl}/seabios.bin` },
+					vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
+					cdrom: { url: `${vmAssetsUrl}/${bootIso}` },
 					autostart: true,
-					filesystem: filesystemUrl ? { baseurl: filesystemUrl } : {},
+					filesystem: rootfsBaseUrl ? { baseurl: rootfsBaseUrl } : {},
 				};
 			}
 
-			// If we have a pre-booted state, use it for instant boot
-			if (stateImage) {
-				v86Config.initial_state = { url: stateImage.startsWith('http') ? stateImage : `${assetsPath}/${stateImage}` };
+			// If we have a pre-booted snapshot, use it for instant boot
+			if (vmSnapshot) {
+				v86Config.initial_state = { url: vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}` };
 				// No cdrom needed when loading state
 				delete v86Config.cdrom;
 				onStatus('Loading pre-booted state...');
 			}
 
-			if (relayUrl) {
-				v86Config.network_relay_url = relayUrl;
-				this._networkRelay = relayUrl;
+			if (networkRelayUrl) {
+				v86Config.network_relay_url = networkRelayUrl;
+				this._networkRelay = networkRelayUrl;
 				onStatus('Creating emulator with network...');
 			}
 
 			this.emulator = new V86(v86Config) as V86Emulator;
 
-			// If loading from a pre-booted state, skip serial boot detection entirely
-			if (stateImage) {
+			// If loading from a snapshot, skip serial boot detection entirely
+			if (vmSnapshot) {
 				onStatus('Restoring state...');
 				setTimeout(async () => {
 					if (this._networkRelay) {
@@ -162,7 +162,7 @@ export class LinuxVM {
 				}, 1000);
 			}
 
-			let booted = !!stateImage;
+			let booted = !!vmSnapshot;
 			let sentEnter = false;
 			let buffer = '';
 
@@ -219,48 +219,44 @@ export class LinuxVM {
 		});
 	}
 
+	/**
+	 * Wait for a file to appear in the 9p filesystem (created by the guest).
+	 * Polls read_file until it succeeds or the timeout is reached.
+	 */
+	private async waitForFile(path: string, timeoutMs = 10000): Promise<Uint8Array> {
+		const start = Date.now();
+		while (Date.now() - start < timeoutMs) {
+			try {
+				const data = await this.emulator!.read_file(path);
+				if (data.byteLength > 0) return data;
+			} catch { /* not yet */ }
+			await this.sleep(100);
+		}
+		throw new Error(`9p: timed out waiting for ${path}`);
+	}
+
 	/** Set up 9p filesystem for file-based I/O */
 	private async mount9p(onStatus: (status: string) => void): Promise<void> {
 		if (!this.emulator) return;
 
 		if (this._fs9pRoot) {
-			// 9p-root mode: root fs IS the 9p fs, no mount needed
+			// 9p-root mode: guest creates dirs + test file, host polls read_file
 			onStatus('Setting up 9p job directory...');
-			this.emulator.serial0_send('mkdir -p /tmp/bashtorio/jobs\n');
-			await this.sleep(300);
-			// Verify create_file/read_file work
-			try {
-				await this.emulator.create_file('tmp/bashtorio/jobs/.ready', new Uint8Array([49])); // "1"
-				const data = await this.emulator.read_file('tmp/bashtorio/jobs/.ready');
-				if (data[0] === 49) {
-					this._fs9pReady = true;
-					console.log('[VM] 9p-root filesystem ready');
-					onStatus('Ready!');
-				} else {
-					throw new Error('read_file verification failed');
-				}
-			} catch (e) {
-				console.warn('[VM] 9p-root file I/O failed, falling back to serial:', e);
-				this._fs9pReady = false;
-				onStatus('Ready (no 9p)');
-			}
+			this.emulator.serial0_send("mkdir -p /tmp/bashtorio/jobs && printf '1' > /tmp/bashtorio/jobs/.ready\n");
+			const data = await this.waitForFile('tmp/bashtorio/jobs/.ready');
+			if (data[0] !== 49) throw new Error('9p: verification mismatch');
+			this._fs9pReady = true;
+			console.log('[VM] 9p-root filesystem ready');
+			onStatus('Ready!');
 		} else {
-			// Legacy: mount 9p guest filesystem
+			// Legacy: mount 9p guest filesystem, then verify host-side I/O
 			onStatus('Mounting 9p filesystem...');
-			this.emulator.serial0_send('mkdir -p /mnt/host && mount -t 9p -o trans=virtio,version=9p2000.L host9p /mnt/host 2>/dev/null && echo 9P_MOUNT_OK || echo 9P_MOUNT_FAIL\n');
-			await this.sleep(500);
-			this.emulator.serial0_send('mkdir -p /mnt/host/jobs\n');
-			await this.sleep(100);
-			try {
-				await this.emulator.create_file('jobs/.ready', new Uint8Array([49])); // "1"
-				this._fs9pReady = true;
-				console.log('[VM] 9p filesystem mounted successfully');
-				onStatus('Ready!');
-			} catch (e) {
-				console.warn('[VM] 9p mount failed, falling back to serial I/O:', e);
-				this._fs9pReady = false;
-				onStatus('Ready (no 9p)');
-			}
+			this.emulator.serial0_send("mkdir -p /mnt/host && mount -t 9p -o trans=virtio,version=9p2000.L host9p /mnt/host 2>/dev/null; mkdir -p /mnt/host/jobs && printf '1' > /mnt/host/jobs/.ready\n");
+			const data = await this.waitForFile('jobs/.ready');
+			if (data[0] !== 49) throw new Error('9p: verification mismatch');
+			this._fs9pReady = true;
+			console.log('[VM] 9p filesystem ready');
+			onStatus('Ready!');
 		}
 	}
 
@@ -306,7 +302,7 @@ export class LinuxVM {
 		return { output, cwd };
 	}
 
-	async createShell(machineId: string): Promise<number> {
+	async createShell(shellTag: string): Promise<number> {
 		if (!this.emulator) throw new Error('Emulator not initialized');
 
 		const shellId = this.shellIdCounter++;
@@ -316,24 +312,24 @@ export class LinuxVM {
 		this.emulator.serial0_send(initCmd + '\n');
 		await this.sleep(100);
 
-		this.shells.set(machineId, {
+		this.shells.set(shellTag, {
 			id: shellId,
 			workDir,
 			cwd: '/',
 		});
 
-		console.log(`[VM] Created shell ${shellId} for machine ${machineId}`);
+		console.log(`[VM] Created shell ${shellId} for ${shellTag}`);
 		return shellId;
 	}
 
-	async destroyShell(machineId: string): Promise<void> {
+	async destroyShell(shellTag: string): Promise<void> {
 		if (!this.emulator) return;
 
-		const shell = this.shells.get(machineId);
+		const shell = this.shells.get(shellTag);
 		if (shell) {
 			this.emulator.serial0_send(`rm -rf ${shell.workDir}\n`);
-			this.shells.delete(machineId);
-			console.log(`[VM] Destroyed shell for machine ${machineId}`);
+			this.shells.delete(shellTag);
+			console.log(`[VM] Destroyed shell for ${shellTag}`);
 		}
 	}
 
@@ -344,15 +340,15 @@ export class LinuxVM {
 	 * then sends a background command via serial0 that redirects stdout/stderr
 	 * to 9p files and writes exit code on completion.
 	 */
-	async startJob(machineId: string, cmd: string, stdin?: string): Promise<string> {
+	async startJob(shellTag: string, cmd: string, stdin?: string): Promise<string> {
 		if (!this.emulator || !this._fs9pReady) {
 			throw new Error('9p not available');
 		}
 
-		let shell = this.shells.get(machineId);
+		let shell = this.shells.get(shellTag);
 		if (!shell) {
-			await this.createShell(machineId);
-			shell = this.shells.get(machineId)!;
+			await this.createShell(shellTag);
+			shell = this.shells.get(shellTag)!;
 		}
 
 		const jobId = `j${this.jobIdCounter++}`;
@@ -370,7 +366,7 @@ export class LinuxVM {
 
 		const job: Job = {
 			id: jobId,
-			machineId,
+			shellTag,
 			bytesRead: 0,
 			done: false,
 			exitCode: null,
@@ -392,7 +388,7 @@ export class LinuxVM {
 
 		this.emulator.serial0_send(fullCmd + '\n');
 
-		console.log(`[VM] Started job ${jobId} for ${machineId}: ${cmd.substring(0, 60)}`);
+		console.log(`[VM] Started job ${jobId} for ${shellTag}: ${cmd.substring(0, 60)}`);
 		return jobId;
 	}
 
@@ -438,7 +434,7 @@ export class LinuxVM {
 					if (cwdStr) {
 						job.cwd = cwdStr;
 						// Update shell state
-						const shell = this.shells.get(job.machineId);
+						const shell = this.shells.get(job.shellTag);
 						if (shell) shell.cwd = cwdStr;
 					}
 				} catch {
@@ -491,15 +487,15 @@ export class LinuxVM {
 	 * starts the command reading from it (using <> to prevent EOF), and saves
 	 * the PID for later cleanup. The command stays alive until explicitly stopped.
 	 */
-	async startStream(machineId: string, cmd: string): Promise<string> {
+	async startStream(shellTag: string, cmd: string): Promise<string> {
 		if (!this.emulator || !this._fs9pReady) {
 			throw new Error('9p not available');
 		}
 
-		let shell = this.shells.get(machineId);
+		let shell = this.shells.get(shellTag);
 		if (!shell) {
-			await this.createShell(machineId);
-			shell = this.shells.get(machineId)!;
+			await this.createShell(shellTag);
+			shell = this.shells.get(shellTag)!;
 		}
 
 		const jobId = `s${this.jobIdCounter++}`;
@@ -511,7 +507,7 @@ export class LinuxVM {
 
 		const job: Job = {
 			id: jobId,
-			machineId,
+			shellTag,
 			bytesRead: 0,
 			done: false,
 			exitCode: null,
@@ -529,7 +525,7 @@ export class LinuxVM {
 
 		this.emulator.serial0_send(fullCmd + '\n');
 
-		console.log(`[VM] Started stream ${jobId} for ${machineId}: ${cmd.substring(0, 60)}`);
+		console.log(`[VM] Started stream ${jobId} for ${shellTag}: ${cmd.substring(0, 60)}`);
 		return jobId;
 	}
 
@@ -567,14 +563,14 @@ export class LinuxVM {
 		console.log(`[VM] Stopped stream ${jobId}`);
 	}
 
-	/** Get CWD for a machine's shell */
-	getShellCwd(machineId: string): string {
-		return this.shells.get(machineId)?.cwd ?? '/';
+	/** Get CWD for a shell session */
+	getShellCwd(shellTag: string): string {
+		return this.shells.get(shellTag)?.cwd ?? '/';
 	}
 
 	// ── Legacy exec/pipe methods (reimplemented over file-based I/O) ────
 
-	async execInShell(machineId: string, cmd: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
+	async execInShell(shellTag: string, cmd: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
 		if (!this._ready || !this.emulator) {
 			console.log('[VM] execInShell blocked - not ready');
 			return { output: '', cwd: '/' };
@@ -582,14 +578,14 @@ export class LinuxVM {
 
 		// Use file-based I/O if available (unless forced to serial)
 		if (this._fs9pReady && !opts?.forceSerial) {
-			return this.execVia9p(machineId, cmd);
+			return this.execVia9p(shellTag, cmd);
 		}
 
 		// Fallback to serial markers
-		return this.execViaSerial(machineId, cmd);
+		return this.execViaSerial(shellTag, cmd);
 	}
 
-	async pipeInShell(machineId: string, input: string, command: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
+	async pipeInShell(shellTag: string, input: string, command: string, opts?: { forceSerial?: boolean }): Promise<{ output: string; cwd: string }> {
 		if (!this._ready || !this.emulator) {
 			console.log('[VM] pipeInShell blocked - not ready');
 			return { output: '', cwd: '/' };
@@ -597,16 +593,16 @@ export class LinuxVM {
 
 		// Use file-based I/O if available (unless forced to serial)
 		if (this._fs9pReady && !opts?.forceSerial) {
-			return this.execVia9p(machineId, command, input);
+			return this.execVia9p(shellTag, command, input);
 		}
 
 		// Fallback to serial markers
-		return this.pipeViaSerial(machineId, input, command);
+		return this.pipeViaSerial(shellTag, input, command);
 	}
 
 	/** Execute via 9p file-based I/O (start job + poll until done) */
-	private async execVia9p(machineId: string, cmd: string, stdin?: string): Promise<{ output: string; cwd: string }> {
-		const jobId = await this.startJob(machineId, cmd, stdin);
+	private async execVia9p(shellTag: string, cmd: string, stdin?: string): Promise<{ output: string; cwd: string }> {
+		const jobId = await this.startJob(shellTag, cmd, stdin);
 		let fullOutput = '';
 		const start = Date.now();
 
@@ -616,7 +612,7 @@ export class LinuxVM {
 			fullOutput += result.newOutput;
 			if (result.done) {
 				await this.cleanupJob(jobId);
-				const shell = this.shells.get(machineId);
+				const shell = this.shells.get(shellTag);
 				return { output: fullOutput.trim(), cwd: result.cwd || shell?.cwd || '/' };
 			}
 		}
@@ -624,16 +620,16 @@ export class LinuxVM {
 		// Timeout
 		console.warn(`[VM] Job ${jobId} timed out`);
 		await this.cleanupJob(jobId);
-		const shell = this.shells.get(machineId);
+		const shell = this.shells.get(shellTag);
 		return { output: fullOutput.trim(), cwd: shell?.cwd || '/' };
 	}
 
 	/** Legacy: execute via serial markers */
-	private async execViaSerial(machineId: string, cmd: string): Promise<{ output: string; cwd: string }> {
-		let shell = this.shells.get(machineId);
+	private async execViaSerial(shellTag: string, cmd: string): Promise<{ output: string; cwd: string }> {
+		let shell = this.shells.get(shellTag);
 		if (!shell) {
-			await this.createShell(machineId);
-			shell = this.shells.get(machineId);
+			await this.createShell(shellTag);
+			shell = this.shells.get(shellTag);
 		}
 
 		const jobId = Math.random().toString(36).slice(2);
@@ -652,7 +648,7 @@ export class LinuxVM {
 			`pwd | tee ${shell!.workDir}/cwd | sed "s/^/${cwdMarker}/"`
 		].join('; ');
 
-		console.log('[VM] execViaSerial:', machineId, cmd);
+		console.log('[VM] execViaSerial:', shellTag, cmd);
 		this.emulator!.serial0_send(fullCmd + '\n');
 
 		const start = Date.now();
@@ -671,11 +667,11 @@ export class LinuxVM {
 	}
 
 	/** Legacy: pipe via serial markers */
-	private async pipeViaSerial(machineId: string, input: string, command: string): Promise<{ output: string; cwd: string }> {
-		let shell = this.shells.get(machineId);
+	private async pipeViaSerial(shellTag: string, input: string, command: string): Promise<{ output: string; cwd: string }> {
+		let shell = this.shells.get(shellTag);
 		if (!shell) {
-			await this.createShell(machineId);
-			shell = this.shells.get(machineId);
+			await this.createShell(shellTag);
+			shell = this.shells.get(shellTag);
 		}
 
 		const jobId = Math.random().toString(36).slice(2);
@@ -696,7 +692,7 @@ export class LinuxVM {
 			`pwd | tee ${shell!.workDir}/cwd | sed "s/^/${cwdMarker}/"`
 		].join('; ');
 
-		console.log('[VM] pipeViaSerial:', machineId, command);
+		console.log('[VM] pipeViaSerial:', shellTag, command);
 		this.emulator!.serial0_send(fullCmd + '\n');
 
 		const start = Date.now();

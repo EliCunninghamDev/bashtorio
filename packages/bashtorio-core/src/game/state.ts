@@ -7,6 +7,7 @@ export interface GameState {
 
   running: boolean;
   timescale: number;
+  beltSpeed: number;
   currentMode: CursorMode;
   currentPlaceable: PlaceableType;
   currentDir: Direction;
@@ -26,6 +27,7 @@ export function createInitialState(): GameState {
 
     running: false,
     timescale: 1,
+    beltSpeed: 2,
     currentMode: 'machine',
     currentPlaceable: 'belt',
     currentDir: 0, // Direction.RIGHT

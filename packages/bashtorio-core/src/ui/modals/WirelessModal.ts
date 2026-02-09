@@ -19,21 +19,27 @@ export class WirelessModal extends BaseModal {
 
   template() {
     return html`
-      <div class="modal-content">
-        <h3>Wireless</h3>
-        <p class="modal-description">Broadcasts received bytes to all other wireless machines on the same channel.</p>
-        <div class="form-group">
-          <label>Channel:</label>
-          <div class="channel-row">
-            ${CHANNELS.map(ch => html`
-              <button class="channel-btn" data-channel="${ch.value}"
-                style="--ch-color: ${ch.color}">${ch.label}</button>
-            `)}
+      <div class="modal-content machine-panel-wrap">
+        <div class="machine-panel">
+          <div class="machine-panel-header">
+            <span class="machine-panel-title">Wireless</span>
           </div>
-        </div>
-        <div class="modal-buttons">
-          <button data-cancel>Cancel</button>
-          <button data-save class="primary">Save</button>
+          <div class="machine-panel-body">
+            <p class="modal-description">Broadcasts received bytes to all other wireless machines on the same channel.</p>
+            <div class="form-group">
+              <label>Channel:</label>
+              <div class="channel-row">
+                ${CHANNELS.map(ch => html`
+                  <button class="channel-btn" data-channel="${ch.value}"
+                    style="--ch-color: ${ch.color}">${ch.label}</button>
+                `)}
+              </div>
+            </div>
+          </div>
+          <div class="machine-panel-footer">
+            <button data-cancel>Cancel</button>
+            <button data-save>Save</button>
+          </div>
         </div>
       </div>
     `;

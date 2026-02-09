@@ -23,6 +23,7 @@ export interface SaveData {
   machines: SerializedMachine[];
   sourceText?: string;
   sinkIdCounter: number;
+  beltSpeed?: number;
 }
 
 /** V1 cell format (dense 2D array) */
@@ -80,6 +81,15 @@ interface SerializedMachine {
   latchControlDir?: number;
   splitterDir?: number;
   waveform?: string;
+  gapInterval?: number;
+  speakRate?: number;
+  speakPitch?: number;
+  speakDelimiter?: string;
+  screenResolution?: number;
+  screenBuffer?: number[];
+  screenWritePos?: number;
+  byteData?: number[];
+  byteInterval?: number;
 }
 
 const SAVE_VERSION = 2;
@@ -87,7 +97,7 @@ const SAVE_VERSION = 2;
 /**
  * Serialize game state to JSON-compatible object (v2 sparse format)
  */
-export function serializeState(): SaveData {
+export function serializeState(state: GameState): SaveData {
   // Create machine index map
   const machineMap = new Map<Machine, number>();
   machines.forEach((m, idx) => machineMap.set(m, idx));
@@ -110,6 +120,7 @@ export function serializeState(): SaveData {
       case MachineType.SOURCE:
         base.emitInterval = m.emitInterval;
         base.sourceText = m.sourceText;
+        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
         break;
       case MachineType.SINK:
         base.sinkId = m.sinkId;
@@ -130,6 +141,7 @@ export function serializeState(): SaveData {
       case MachineType.CONSTANT:
         base.constantText = m.constantText;
         base.emitInterval = m.emitInterval;
+        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
         break;
       case MachineType.FILTER:
         base.filterByte = m.filterByte;
@@ -184,6 +196,21 @@ export function serializeState(): SaveData {
       case MachineType.TONE:
         base.waveform = m.waveform;
         break;
+      case MachineType.SPEAK:
+        base.speakRate = m.speakRate;
+        base.speakPitch = m.speakPitch;
+        base.speakDelimiter = m.speakDelimiter;
+        break;
+      case MachineType.SCREEN:
+        base.screenResolution = m.resolution;
+        base.screenBuffer = Array.from(m.buffer);
+        base.screenWritePos = m.writePos;
+        break;
+      case MachineType.BYTE:
+        base.byteData = Array.from(m.byteData);
+        base.emitInterval = m.emitInterval;
+        if (m.gapInterval > 0) base.gapInterval = m.gapInterval;
+        break;
     }
     return base;
   });
@@ -193,6 +220,7 @@ export function serializeState(): SaveData {
     cells,
     machines: serializedMachines,
     sinkIdCounter: getSinkIdCounter(),
+    beltSpeed: state.beltSpeed,
   };
 }
 
@@ -234,6 +262,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           sourcePos: 0,
           emitInterval: sm.emitInterval ?? 500,
           lastEmitTime: 0,
+          gapInterval: sm.gapInterval ?? 0,
+          gapRemaining: 0,
         };
         break;
       case MachineType.SINK:
@@ -242,6 +272,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.SINK,
           sinkId: sm.sinkId,
           name: sm.name ?? `Sink ${sm.sinkId}`,
+          drainRing: [],
+          drainHead: 0,
         };
         break;
       case MachineType.COMMAND:
@@ -306,6 +338,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           emitInterval: sm.emitInterval ?? sm.constantInterval ?? 500,
           constantPos: 0,
           lastEmitTime: 0,
+          gapInterval: sm.gapInterval ?? 0,
+          gapRemaining: 0,
         };
         break;
       case MachineType.FILTER:
@@ -440,6 +474,43 @@ export function deserializeState(state: GameState, data: SaveData): void {
       case MachineType.TONE:
         machine = { ...base, type: MachineType.TONE, waveform: (sm.waveform ?? 'sine') as OscillatorType };
         break;
+      case MachineType.SPEAK:
+        machine = {
+          ...base,
+          type: MachineType.SPEAK,
+          speakRate: sm.speakRate ?? 1,
+          speakPitch: sm.speakPitch ?? 1,
+          speakDelimiter: sm.speakDelimiter ?? '\n',
+          accumulatedBuffer: '',
+          displayText: '',
+          displayTime: 0,
+        };
+        break;
+      case MachineType.SCREEN: {
+        const res = (sm.screenResolution ?? 8) as 8 | 16 | 32;
+        const bufSize = (res * res) / 8;
+        const buf = sm.screenBuffer ? new Uint8Array(sm.screenBuffer) : new Uint8Array(bufSize);
+        machine = {
+          ...base,
+          type: MachineType.SCREEN,
+          resolution: res,
+          buffer: buf,
+          writePos: sm.screenWritePos ?? 0,
+        };
+        break;
+      }
+      case MachineType.BYTE:
+        machine = {
+          ...base,
+          type: MachineType.BYTE,
+          byteData: sm.byteData ? new Uint8Array(sm.byteData) : new Uint8Array(0),
+          bytePos: 0,
+          emitInterval: sm.emitInterval ?? 500,
+          lastEmitTime: 0,
+          gapInterval: sm.gapInterval ?? 0,
+          gapRemaining: 0,
+        };
+        break;
       default:
         // Fallback for unknown types in old saves
         machine = { ...base, type: MachineType.NULL };
@@ -487,13 +558,15 @@ export function deserializeState(state: GameState, data: SaveData): void {
 
   // Restore other state
   setSinkIdCounter(data.sinkIdCounter ?? 1);
+  state.beltSpeed = data.beltSpeed ?? 2;
+  emitGameEvent('beltSpeedChanged', { beltSpeed: state.beltSpeed });
 }
 
 /**
  * Download save data as JSON file
  */
-export function downloadSave(filename = 'bashtorio-save.json'): void {
-  const data = serializeState();
+export function downloadSave(state: GameState, filename = 'bashtorio-save.json'): void {
+  const data = serializeState(state);
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -559,8 +632,8 @@ async function decompress(input: Uint8Array): Promise<Uint8Array> {
 /**
  * Encode save data as a compressed, base64url string (URL-safe, no padding).
  */
-export async function saveToBase64(): Promise<string> {
-	const data = serializeState();
+export async function saveToBase64(state: GameState): Promise<string> {
+	const data = serializeState(state);
 	const json = JSON.stringify(data);
 	const encoded = new TextEncoder().encode(json);
 	const compressed = await compress(encoded);
@@ -639,7 +712,7 @@ export function setupSaveLoadHandlers(
 ): void {
   onGameEvent('clearAll', () => clearState(state));
 
-  onGameEvent('requestSave', () => downloadSave());
+  onGameEvent('requestSave', () => downloadSave(state));
 
   onGameEvent('requestLoad', async () => {
     try {
@@ -661,7 +734,7 @@ export function setupSaveLoadHandlers(
   });
 
   onGameEvent('requestCopyLink', async () => {
-    const base64 = await saveToBase64();
+    const base64 = await saveToBase64(state);
     const url = new URL(window.location.href);
     url.searchParams.set('factory', base64);
     navigator.clipboard.writeText(url.toString()).then(

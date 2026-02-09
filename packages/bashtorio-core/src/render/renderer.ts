@@ -8,10 +8,8 @@ import {
   MachineType,
   type Machine,
   type CommandMachine,
-  type PackerMachine,
   type SourceMachine,
   type SinkMachine,
-  type DisplayMachine,
   type RouterMachine,
   type ReplaceMachine,
   type MathMachine,
@@ -31,9 +29,12 @@ import {
   type KeyboardMachine,
   type UnpackerMachine,
   type ToneMachine,
+  type ScreenMachine,
   type BeltCell,
   type CursorMode,
   type OrphanedPacket,
+  SINK_DRAIN_SLOTS,
+  SINK_DRAIN_MS,
 } from '../game/types';
 import type { ColorTheme, MachineColor } from '../util/themes';
 import type { GameState } from '../game/state';
@@ -73,6 +74,26 @@ const LABEL_MAX_WIDTH = GRID_SIZE - 10;
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 
+function fract(x: number): number { return x - Math.floor(x); }
+
+// Stateless procedural animation helpers (V8-inlineable)
+function hashX(i: number): number { return fract(Math.sin(i * 127.1 + i * i * 311.7) * 43758.5453); }
+function hashY(i: number): number { return fract(Math.sin(i * 269.5 + i * i * 183.3) * 43758.5453); }
+
+function wanderX(t: number, phase: number): number {
+  return Math.sin(t * 1.3 + phase) + Math.sin(t * 0.7 + phase * 2.3) + Math.sin(t * 2.1 + phase * 0.7);
+}
+function wanderY(t: number, phase: number): number {
+  return Math.sin(t * 0.9 + phase) + Math.sin(t * 1.7 + phase * 1.9) + Math.sin(t * 0.5 + phase * 3.1);
+}
+
+function vortexX(cx: number, angle: number, radius: number): number {
+  return cx + Math.cos(angle) * radius;
+}
+function vortexY(cy: number, angle: number, radius: number): number {
+  return cy + Math.sin(angle) * radius;
+}
+
 const WIFI_ARC_RADII = [7, 13, 19] as const;
 const WIFI_ARC_START = -Math.PI * 0.75;
 const WIFI_ARC_END = -Math.PI * 0.25;
@@ -91,7 +112,7 @@ const SEVENSEG_BITMASK: Record<string, number> = {
 const PACKET_CORNER_RADIUS = 4;
 
 const BUBBLE_PADDING = 10;
-const BUBBLE_HEIGHT = 30;
+const BUBBLE_LINE_HEIGHT = 18;
 const BUBBLE_MAX_WIDTH = 300;
 const BUBBLE_RADIUS = 6;
 const BUBBLE_POINTER_HALF = 6;
@@ -194,6 +215,9 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
   [MachineType.DRUM]:       { bg: '#4a3a2a', border: '#aa7744', text: '#ffcc66' },
   [MachineType.TONE]:       { bg: '#3a2a5a', border: '#7a4aaa', text: '#cc99ff' },
+  [MachineType.SPEAK]:      { bg: '#2a4a5a', border: '#4a8aaa', text: '#88ddff' },
+  [MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
+  [MachineType.BYTE]:       { bg: '#2a4a3a', border: '#4a8a6a', text: '#88ffcc' },
 };
 
 const WIRELESS_CHANNEL_COLORS = [
@@ -410,6 +434,8 @@ export class Renderer {
     for (const machine of machines) {
       if (machine.type === MachineType.DISPLAY && machine.displayText) {
         this.drawSpeechBubble(machine);
+      } else if (machine.type === MachineType.SPEAK && machine.displayText) {
+        this.drawSpeechBubble(machine);
       }
     }
 
@@ -554,6 +580,15 @@ export class Renderer {
         break;
       case 'tone':
         this.drawMachineBox(col, row, MachineType.TONE, 'SIN');
+        break;
+      case 'speak':
+        this.drawMachineBox(col, row, MachineType.SPEAK, 'TALK');
+        break;
+      case 'screen':
+        this.drawMachineBox(col, row, MachineType.SCREEN, 'SCR');
+        break;
+      case 'byte':
+        this.drawMachineBox(col, row, MachineType.BYTE, 'BYTE');
         break;
     }
 
@@ -995,6 +1030,50 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Screen (monochrome bitmap display)
+  // -------------------------------------------------------------------------
+
+  private drawScreen(machine: ScreenMachine): void {
+    const px = gx(machine.x);
+    const py = gy(machine.y);
+    const ctx = this.ctx;
+    const res = machine.resolution;
+    const bufLen = machine.buffer.length;
+
+    // Black background + white border
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px + CELL_INSET + 0.5, py + CELL_INSET + 0.5, CELL_INNER - 1, CELL_INNER - 1);
+
+    // Pixel grid area (inside border with small padding)
+    const pad = 3;
+    const areaX = px + CELL_INSET + pad;
+    const areaY = py + CELL_INSET + pad;
+    const areaSize = CELL_INNER - pad * 2;
+    const pixelSize = areaSize / res;
+
+    // Render pixels from circular buffer
+    ctx.fillStyle = '#ffffff';
+    for (let row = 0; row < res; row++) {
+      for (let col = 0; col < res; col++) {
+        const bitIdx = row * res + col;
+        const byteIdx = Math.floor(bitIdx / 8) % bufLen;
+        const bitPos = 7 - (bitIdx % 8); // MSB first
+        if (machine.buffer[byteIdx] & (1 << bitPos)) {
+          ctx.fillRect(
+            areaX + col * pixelSize,
+            areaY + row * pixelSize,
+            pixelSize,
+            pixelSize,
+          );
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Machine (full, with indicators)
   // -------------------------------------------------------------------------
 
@@ -1008,6 +1087,12 @@ export class Renderer {
     // Seven-segment display: custom rendering
     if (machine.type === MachineType.SEVENSEG) {
       this.drawSevenSeg(machine as SevenSegMachine);
+      return;
+    }
+
+    // Screen: custom bitmap rendering
+    if (machine.type === MachineType.SCREEN) {
+      this.drawScreen(machine);
       return;
     }
 
@@ -1095,6 +1180,8 @@ export class Renderer {
         }
         case MachineType.LATCH:      label = 'LAT';  break;
         case MachineType.DRUM:       label = 'DRUM'; break;
+        case MachineType.SPEAK:      label = 'TALK'; break;
+        case MachineType.BYTE:       label = 'BYTE'; break;
 
       }
 
@@ -1145,7 +1232,7 @@ export class Renderer {
 
     // Accumulation dots for packer machines
     if (machine.type === MachineType.PACKER) {
-      this.drawPackerDots(px, py, machine);
+      this.drawGenericBufferDots(px, py, machine.accumulatedBuffer.length);
     }
 
     // Direction arrow for command machines (show output belt direction)
@@ -1182,10 +1269,11 @@ export class Renderer {
       this.drawGenericBufferDots(px, py, (machine as DuplicatorMachine).outputBuffer.length);
     }
 
-    // Delay: queue depth dots (delayQueue + outputBuffer)
+    // Delay: wandering mini packets for queued bytes
     if (machine.type === MachineType.DELAY) {
       const dm = machine as DelayMachine;
-      this.drawGenericBufferDots(px, py, dm.delayQueue.length + dm.outputBuffer.length);
+      const chars = dm.delayQueue.map(q => q.char).join('') + dm.outputBuffer;
+      this.drawDelayDots(px, py, chars);
     }
 
     // Keyboard: buffer dots
@@ -1196,6 +1284,11 @@ export class Renderer {
     // Unpacker: buffer dots
     if (machine.type === MachineType.UNPACKER) {
       this.drawGenericBufferDots(px, py, (machine as UnpackerMachine).outputBuffer.length);
+    }
+
+    // Sink: swirling drain animation
+    if (machine.type === MachineType.SINK) {
+      this.drawSinkDrain(px, py, machine as SinkMachine);
     }
 
     // Filter: red strikethrough when in block mode
@@ -1286,53 +1379,21 @@ export class Renderer {
   // Packer accumulation dots
   // -------------------------------------------------------------------------
 
-  private drawPackerDots(px: number, py: number, machine: PackerMachine): void {
-    const ctx = this.ctx;
-    const totalWidth = (DOT_COUNT - 1) * DOT_SPACING;
-    const startX = px + HALF_GRID - totalWidth / 2;
-
-    const filled = machine.accumulatedBuffer.length % DOT_MOD;
-
-    const botY = py + GRID_SIZE - DOT_Y_INSET;
-    for (let i = 0; i < DOT_COUNT; i++) {
-      ctx.beginPath();
-      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, TAU);
-      if (i < filled) {
-        ctx.fillStyle = CLR_INPUT_AMBER;
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = CLR_DOT_EMPTY;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
-  }
-
   // -------------------------------------------------------------------------
   // Stream indicator (stream command machines)
   // -------------------------------------------------------------------------
 
   private drawStreamIndicator(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
-    const ANIM_DURATION = 300;
-    const BOUNCE_PX = 3;
-
-    // Animate on recent write
-    const elapsed = now - machine.lastStreamWriteTime;
-    let offsetY = 0;
-    if (machine.lastStreamWriteTime > 0 && elapsed < ANIM_DURATION) {
-      const t = elapsed / ANIM_DURATION;
-      offsetY = Math.sin(t * TAU) * BOUNCE_PX;
-    }
-
     const centerX = px + HALF_GRID;
-    const botY = py + GRID_SIZE - DOT_Y_INSET + offsetY;
+    const botY = py + GRID_SIZE - DOT_Y_INSET;
+    const total = machine.streamBytesWritten + machine.bytesRead;
 
-    ctx.font = 'bold 10px monospace';
+    ctx.font = FONT_PACKET_TINY;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = machine.activeJobId ? CLR_INPUT_AMBER : CLR_DOT_EMPTY;
-    ctx.fillText('~~', centerX, botY);
+    ctx.fillText(total > 0 ? formatBytes(total) : '', centerX, botY);
   }
 
   // -------------------------------------------------------------------------
@@ -1361,7 +1422,96 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Delay dots — stateless procedural wandering animation
+  // -------------------------------------------------------------------------
+
+  private drawDelayDots(px: number, py: number, chars: string): void {
+    if (chars.length === 0) return;
+    const ctx = this.ctx;
+    const t = now / 1000;
+    const capped = Math.min(chars.length, 16);
+
+    // Inset area within the cell for mini packets to wander
+    const inset = 10;
+    const areaW = GRID_SIZE - inset * 2;
+    const areaH = GRID_SIZE - inset * 2;
+    const baseX = px + inset;
+    const baseY = py + inset;
+
+    const amp = 0.07;
+
+    ctx.globalAlpha = 0.85;
+
+    for (let i = 0; i < capped; i++) {
+      const hx = hashX(i);
+      const hy = hashY(i);
+      const ox = wanderX(t, hx * TAU) * amp;
+      const oy = wanderY(t, hy * TAU) * amp;
+
+      this.drawMiniPacket(
+        baseX + (hx + ox) * areaW,
+        baseY + (hy + oy) * areaH,
+        chars[i],
+        0.4,
+      );
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // -------------------------------------------------------------------------
+  // Sink drain — mini packets spiral inward and fade
+  // -------------------------------------------------------------------------
+
+  private drawSinkDrain(px: number, py: number, sink: SinkMachine): void {
+    const ring = sink.drainRing;
+    if (ring.length === 0) return;
+
+    const ctx = this.ctx;
+    const t = now;
+    const centerX = px + HALF_GRID;
+    const centerY = py + HALF_GRID;
+    const maxRadius = HALF_GRID - 6;
+
+    // Reverse-iterate from most recent entry
+    let expired = true;
+    for (let k = 0; k < ring.length; k++) {
+      // Walk backwards from head
+      const idx = (sink.drainHead - 1 - k + SINK_DRAIN_SLOTS) % SINK_DRAIN_SLOTS;
+      if (idx >= ring.length) continue;
+      const entry = ring[idx];
+      const elapsed = t - entry.time;
+      if (elapsed < 0 || elapsed >= SINK_DRAIN_MS) continue;
+      expired = false;
+
+      const linear = elapsed / SINK_DRAIN_MS;
+      const progress = linear * linear; // ease-in: slow start, fast finish
+
+      // Spiral: radius shrinks, angle increases
+      const radius = maxRadius * (1 - progress);
+      const angle = progress * TAU * 2.5 + idx * (TAU / SINK_DRAIN_SLOTS);
+      const dx = vortexX(centerX, angle, radius);
+      const dy = vortexY(centerY, angle, radius);
+
+      // Fade + shrink near center
+      const scale = 0.7 * (1 - progress * 0.7);
+      ctx.globalAlpha = 1 - progress * progress;
+
+      this.drawMiniPacket(dx, dy, entry.char, scale);
+    }
+
+    ctx.globalAlpha = 1;
+
+    // If every entry has fully played, clear the ring
+    if (expired) {
+      sink.drainRing = [];
+      sink.drainHead = 0;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Input arrow (pointing inward toward cell center)
+
   // -------------------------------------------------------------------------
 
   private drawInputArrow(col: number, row: number, fromDir: Direction, color: string): void {
@@ -1489,17 +1639,17 @@ export class Renderer {
   // Mini packet (rendered inside machine box)
   // -------------------------------------------------------------------------
 
-  private drawMiniPacket(px: number, py: number, char: string): void {
+  private drawMiniPacket(px: number, py: number, char: string, scale = 1): void {
     const ctx = this.ctx;
     const code = char.charCodeAt(0);
     const isMultibyte = code > 127;
     const color = this.packetColor(code);
-    const size = PACKET_SIZE / 2 - 2;
+    const size = (PACKET_SIZE / 2 - 2) * scale;
 
     // Shape background + border
     ctx.fillStyle = CLR_PACKET_BG;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = scale < 1 ? 1 : 2;
 
     if (isMultibyte) {
       ctx.beginPath();
@@ -1512,27 +1662,34 @@ export class Renderer {
       ctx.stroke();
     } else {
       ctx.beginPath();
-      ctx.roundRect(px - size, py - size, size * 2, size * 2, 3);
+      ctx.roundRect(px - size, py - size, size * 2, size * 2, 3 * scale);
       ctx.fill();
       ctx.stroke();
     }
 
     // Character label
     ctx.fillStyle = color;
-    ctx.font = FONT_PACKET;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     let display = char;
-    if (code < 32) {
-      display = CTRL_NAMES[code];
+    if (scale < 0.5) {
       ctx.font = FONT_PACKET_TINY;
-    } else if (code === 32) {
-      display = 'SP';
-      ctx.font = FONT_PACKET_SMALL;
-    } else if (code === 127) {
-      display = 'DEL';
-      ctx.font = FONT_PACKET_TINY;
+      if (code < 32) display = CTRL_NAMES[code];
+      else if (code === 32) display = 'SP';
+      else if (code === 127) display = '·';
+    } else {
+      ctx.font = FONT_PACKET;
+      if (code < 32) {
+        display = CTRL_NAMES[code];
+        ctx.font = FONT_PACKET_TINY;
+      } else if (code === 32) {
+        display = 'SP';
+        ctx.font = FONT_PACKET_SMALL;
+      } else if (code === 127) {
+        display = 'DEL';
+        ctx.font = FONT_PACKET_TINY;
+      }
     }
 
     ctx.fillText(display, px, py);
@@ -1728,34 +1885,62 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
-  // Speech bubble (display machines)
+  // Speech bubble (shared multi-line word-wrap renderer)
   // -------------------------------------------------------------------------
 
-  private drawSpeechBubble(machine: DisplayMachine): void {
-    const age = now - machine.displayTime;
+  private wrapText(text: string, maxWidth: number): string[] {
     const ctx = this.ctx;
-
-    let alpha = 1;
-    if (age > BUBBLE_FADE_START_MS) {
-      alpha = 1 - (age - BUBBLE_FADE_START_MS) / BUBBLE_FADE_DURATION_MS;
-      if (alpha <= 0) {
-        machine.displayText = '';
-        return;
+    const lines: string[] = [];
+    for (const paragraph of text.split('\n')) {
+      const words = paragraph.split(/\s+/).filter(w => w.length > 0);
+      if (words.length === 0) { lines.push(''); continue; }
+      let line = words[0];
+      for (let i = 1; i < words.length; i++) {
+        const test = line + ' ' + words[i];
+        if (ctx.measureText(test).width > maxWidth) {
+          lines.push(line);
+          line = words[i];
+        } else {
+          line = test;
+        }
       }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  /** Measure text for a bubble, returning wrapped lines and bubble dimensions. */
+  private measureBubble(text: string): { lines: string[]; width: number; height: number } {
+    const innerMax = BUBBLE_MAX_WIDTH - BUBBLE_PADDING * 2;
+    this.ctx.font = FONT_BUBBLE;
+    const lines = this.wrapText(text, innerMax);
+
+    let maxLineWidth = 0;
+    for (const line of lines) {
+      const w = this.ctx.measureText(line).width;
+      if (w > maxLineWidth) maxLineWidth = w;
     }
 
-    const text = machine.displayText;
-    const mx = cx(machine.x);
-    const my = gy(machine.y);
+    return {
+      lines,
+      width: Math.min(maxLineWidth + BUBBLE_PADDING * 2, BUBBLE_MAX_WIDTH),
+      height: lines.length * BUBBLE_LINE_HEIGHT + BUBBLE_PADDING * 2,
+    };
+  }
 
-    ctx.font = FONT_BUBBLE;
-    const metrics = ctx.measureText(text);
-    const bubbleWidth = Math.min(metrics.width + BUBBLE_PADDING * 2, BUBBLE_MAX_WIDTH);
+  private drawBubbleMeasured(
+    col: number, row: number,
+    measured: { lines: string[]; width: number; height: number },
+    borderColor: string, textColor: string, alpha = 1,
+  ): void {
+    const ctx = this.ctx;
+    const mx = cx(col);
+    const my = gy(row);
+    const { lines, width: bubbleWidth, height: bubbleHeight } = measured;
 
     let bubbleX = mx - bubbleWidth / 2;
-    let bubbleY = my - BUBBLE_HEIGHT - BUBBLE_GAP;
+    let bubbleY = my - bubbleHeight - BUBBLE_GAP;
 
-    // Keep on screen (convert canvas bounds to world coords via effective scale)
     const es = cam.getScale();
     const visLeft = cam.getX() + BUBBLE_MARGIN / es;
     const visRight = cam.getX() + this.canvas.width / es - bubbleWidth - BUBBLE_MARGIN / es;
@@ -1768,21 +1953,21 @@ export class Renderer {
     // Background
     ctx.fillStyle = CLR_BUBBLE_BG;
     ctx.beginPath();
-    ctx.roundRect(bubbleX, bubbleY, bubbleWidth, BUBBLE_HEIGHT, BUBBLE_RADIUS);
+    ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, BUBBLE_RADIUS);
     ctx.fill();
 
     // Border
-    ctx.strokeStyle = CLR_BUBBLE_BORDER;
+    ctx.strokeStyle = borderColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
     // Pointer
-    ctx.fillStyle = CLR_BUBBLE_BG;
+    ctx.fillStyle = borderColor;
     ctx.beginPath();
     if (bubbleY < my) {
-      ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + BUBBLE_HEIGHT);
-      ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY + BUBBLE_HEIGHT);
-      ctx.lineTo(mx, bubbleY + BUBBLE_HEIGHT + BUBBLE_POINTER_HEIGHT);
+      ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
+      ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
+      ctx.lineTo(mx, bubbleY + bubbleHeight + BUBBLE_POINTER_HEIGHT);
     } else {
       ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY);
       ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY);
@@ -1791,14 +1976,34 @@ export class Renderer {
     ctx.fill();
 
     // Text
-    ctx.fillStyle = CLR_BUBBLE_TEXT;
-    ctx.textAlign = 'center';
+    ctx.fillStyle = textColor;
+    ctx.font = FONT_BUBBLE;
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, bubbleX + bubbleWidth / 2, bubbleY + BUBBLE_HEIGHT / 2,
-      bubbleWidth - BUBBLE_PADDING * 2);
+    for (let i = 0; i < lines.length; i++) {
+      const ly = bubbleY + BUBBLE_PADDING + i * BUBBLE_LINE_HEIGHT + BUBBLE_LINE_HEIGHT / 2;
+      ctx.fillText(lines[i], bubbleX + BUBBLE_PADDING, ly);
+    }
 
     ctx.globalAlpha = 1;
   }
+
+  private drawSpeechBubble(machine: { x: number; y: number; displayText: string; displayTime: number }): void {
+    const age = now - machine.displayTime;
+
+    let alpha = 1;
+    if (age > BUBBLE_FADE_START_MS) {
+      alpha = 1 - (age - BUBBLE_FADE_START_MS) / BUBBLE_FADE_DURATION_MS;
+      if (alpha <= 0) {
+        machine.displayText = '';
+        return;
+      }
+    }
+
+    const measured = this.measureBubble(machine.displayText);
+    this.drawBubbleMeasured(machine.x, machine.y, measured, CLR_BUBBLE_BORDER, CLR_BUBBLE_TEXT, alpha);
+  }
+
 
   // -------------------------------------------------------------------------
   // Machine tooltip (command machines)
@@ -1874,7 +2079,7 @@ export class Renderer {
     ctx.stroke();
 
     // Pointer
-    ctx.fillStyle = CLR_TOOLTIP_BG;
+    ctx.fillStyle = CLR_TOOLTIP_BORDER;
     ctx.beginPath();
     if (bubbleY < my) {
       ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
@@ -1969,7 +2174,7 @@ export class Renderer {
     ctx.stroke();
 
     // Pointer
-    ctx.fillStyle = CLR_TOOLTIP_BG;
+    ctx.fillStyle = CLR_TOOLTIP_BORDER;
     ctx.beginPath();
     if (bubbleY < my) {
       ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
