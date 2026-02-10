@@ -7,16 +7,14 @@ const log = createLogger('VM');
 export interface VMConfig {
 	/** Base URL for v86 assets (wasm, bios, etc.) */
 	vmAssetsUrl: string;
-	/** Pre-booted VM state snapshot file (skips boot when provided) */
-	vmSnapshot?: string;
+	/** VM state snapshot identifier (URL or filename relative to vmAssetsUrl) */
+	vmStateUrl: string;
 	/** Base URL for the 9p rootfs flat directory */
 	rootfsBaseUrl?: string;
 	/** 9p rootfs JSON manifest filename */
 	rootfsManifest: string;
 	/** Container element for the VGA screen */
 	screenContainer: HTMLElement;
-	/** WebSocket relay URL for VM networking */
-	networkRelayUrl?: string | null;
 	/** Pre-downloaded ArrayBuffers keyed by URL (from preload progress bar) */
 	preloadBuffers?: Record<string, ArrayBuffer>;
 	/** Status callback during boot */
@@ -79,15 +77,15 @@ export class LinuxVM {
 			await shell.start('/');
 			await new Promise(r => setTimeout(r, 1000));
 			shell.write('echo test123\n');
-			for (let i = 0; i < 6; i++) {
-				await new Promise(r => setTimeout(r, 500));
+			for (let i = 0; i < 20; i++) {
+				await new Promise(r => setTimeout(r, 1000));
 				const output = await shell.read();
 				if (output.includes('test123')) {
 					log.info('Test: PASS');
 					return true;
 				}
 			}
-			log.warn('Test: FAIL (no output after 3s)');
+			log.warn('Test: FAIL (no output after 20s)');
 			return false;
 		} catch (e) {
 			log.error('Test failed:', e);

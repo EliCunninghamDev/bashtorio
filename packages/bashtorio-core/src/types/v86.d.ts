@@ -5,12 +5,13 @@ export interface V86Config {
   memory_size: number;
   vga_memory_size: number;
   screen_container: HTMLElement | null;
-  bios: { url: string };
-  vga_bios: { url: string };
+  bios: { url: string } | { buffer: ArrayBuffer };
+  vga_bios: { url: string } | { buffer: ArrayBuffer };
   cdrom?: { url: string };
   hda?: { url: string };
   autostart: boolean;
   network_relay_url?: string;
+  net_device?: { type?: string; relay_url: string };
   initial_state?: { url: string } | { buffer: ArrayBuffer };
   filesystem?: { baseurl: string; basefs?: string } | Record<string, never>;
   bzimage_initrd_from_filesystem?: boolean;

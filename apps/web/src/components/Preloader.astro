@@ -1,0 +1,211 @@
+---
+import MusicPlayer from './MusicPlayer.astro';
+
+interface Props {
+  manifest: { url: string; logicalUrl?: string; size: number; label: string }[];
+  tracks: { file: string; name: string }[];
+}
+
+const { manifest, tracks } = Astro.props;
+---
+
+<div id="js-loader" data-manifest={JSON.stringify(manifest)}>
+  <div class="loader-inner">
+    <h1 class="title">ba<span class="sh">sh</span>torio<span class="cursor">_</span></h1>
+    <p class="subtitle">A Unix Pipe Factory Game</p>
+    <div id="js-loader-status" class="status">Your first time loading might take awhile... it's a full VM.</div>
+    <div id="js-loader-bars" class="bars"></div>
+    {tracks.length > 0 && <MusicPlayer tracks={tracks} />}
+  </div>
+</div>
+
+<style>
+  @keyframes cursor-blink {
+    50% { opacity: 0; }
+  }
+
+  #js-loader {
+    position: fixed;
+    inset: 0;
+    background: var(--loader-bg);
+    display: flex;
+    align-items: start;
+    justify-content: center;
+    padding-top: 33vh;
+    z-index: 9999;
+    font-family: var(--loader-font);
+  }
+
+  .loader-inner {
+    text-align: center;
+    max-width: 700px;
+    padding: 30px;
+  }
+
+  .title {
+    font-size: 2.5rem;
+    margin-bottom: 5px;
+    color: var(--loader-fg);
+  }
+
+  .sh {
+    color: var(--loader-accent);
+  }
+
+  .cursor {
+    display: inline-block;
+    position: relative;
+    bottom: 0.15em;
+    font-weight: bold;
+    animation: cursor-blink 1s step-end infinite;
+  }
+
+  .subtitle {
+    color: var(--loader-fg);
+    margin-bottom: 40px;
+    font-size: 1rem;
+  }
+
+  .status {
+    color: var(--loader-accent);
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+  }
+
+  .bars {
+    width: 300px;
+    margin: 0 auto;
+    text-align: left;
+  }
+</style>
+
+<script is:inline>
+  (function() {
+    var el = document.getElementById('js-loader');
+    if (!el) return;
+    var barsContainer = document.getElementById('js-loader-bars');
+    var status = document.getElementById('js-loader-status');
+    var manifest = JSON.parse(el.dataset.manifest || '[]');
+    if (!manifest.length) return;
+
+    var s = getComputedStyle(document.documentElement);
+    var accentColor = s.getPropertyValue('--loader-accent').trim();
+    var mutedColor = s.getPropertyValue('--loader-fg-muted').trim();
+    var faintColor = s.getPropertyValue('--loader-fg-faint').trim();
+    var trackBg = s.getPropertyValue('--loader-track-bg').trim();
+    var trackBorder = s.getPropertyValue('--loader-track-border').trim();
+
+    function formatSize(bytes) {
+      if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1024).toFixed(0) + ' KB';
+    }
+
+    // Build per-file UI (JS-created elements use inline styles since they lack scoping attributes)
+    var files = [];
+    for (var i = 0; i < manifest.length; i++) {
+      var item = manifest[i];
+      var row = document.createElement('div');
+      row.style.cssText = 'margin-bottom:12px';
+
+      var header = document.createElement('div');
+      header.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:4px';
+
+      var label = document.createElement('span');
+      label.style.cssText = 'color:' + mutedColor + ';font-size:0.75rem';
+      label.textContent = item.label;
+
+      var info = document.createElement('span');
+      info.style.cssText = 'color:' + faintColor + ';font-size:0.75rem';
+      info.textContent = '0% of ' + formatSize(item.size);
+
+      header.appendChild(label);
+      header.appendChild(info);
+
+      var track = document.createElement('div');
+      track.style.cssText = 'width:100%;height:6px;background:' + trackBg + ';border:1px solid ' + trackBorder + ';border-radius:3px;overflow:hidden';
+
+      var bar = document.createElement('div');
+      bar.style.cssText = 'height:100%;width:0%;background:' + accentColor + ';border-radius:2px;transition:width 0.15s ease-out';
+
+      track.appendChild(bar);
+      row.appendChild(header);
+      row.appendChild(track);
+      barsContainer.appendChild(row);
+
+      files.push({ url: item.url, logicalUrl: item.logicalUrl || item.url, size: item.size, loaded: 0, bar: bar, info: info, done: false });
+    }
+
+    var allDone = 0;
+
+    function renderFile(f) {
+      var p = f.size ? Math.min(100, Math.round(f.loaded / f.size * 100)) : 100;
+      f.bar.style.width = p + '%';
+      f.info.textContent = f.done ? formatSize(f.size) : p + '% of ' + formatSize(f.size);
+      if (f.done) f.info.style.color = accentColor;
+    }
+
+    function trackFetch(f) {
+      return fetch(f.url).then(function(res) {
+        var reader = res.body.getReader();
+        var chunks = [];
+        return new Promise(function(resolve) {
+          function pump() {
+            reader.read().then(function(result) {
+              if (result.done) {
+                f.done = true; f.loaded = f.size; allDone++;
+                renderFile(f);
+                if (allDone >= files.length) status.textContent = 'Initializing...';
+                var total = 0;
+                for (var i = 0; i < chunks.length; i++) total += chunks[i].length;
+                var merged = new Uint8Array(total);
+                var offset = 0;
+                for (var i = 0; i < chunks.length; i++) {
+                  merged.set(chunks[i], offset);
+                  offset += chunks[i].length;
+                }
+                console.log('[Preload]', f.url, '→', total, 'bytes, magic:', merged[0].toString(16), merged[1].toString(16));
+                if (merged[0] === 0x1f && merged[1] === 0x8b) {
+                  console.log('[Preload] Gzip detected, decompressing...');
+                  status.textContent = 'Decompressing VM state...';
+                  var ds = new DecompressionStream('gzip');
+                  var writer = ds.writable.getWriter();
+                  writer.write(merged);
+                  writer.close();
+                  new Response(ds.readable).arrayBuffer().then(function(buf) {
+                    console.log('[Preload] Decompressed:', buf.byteLength, 'bytes');
+                    resolve(buf);
+                  }).catch(function(e) { console.warn('[Preload] Decompress failed, using raw:', e); resolve(merged.buffer); });
+                } else {
+                  console.log('[Preload] No gzip magic, using raw buffer');
+                  resolve(merged.buffer);
+                }
+                return;
+              }
+              chunks.push(result.value);
+              f.loaded += result.value.length;
+              renderFile(f);
+              pump();
+            }).catch(function() { f.done = true; allDone++; renderFile(f); resolve(null); });
+          }
+          pump();
+        });
+      }).catch(function() { f.done = true; allDone++; renderFile(f); return null; });
+    }
+
+    var promises = [];
+    for (var i = 0; i < files.length; i++) {
+      promises.push(trackFetch(files[i]));
+    }
+    window.__preloadReady = Promise.all(promises).then(function(buffers) {
+      window.__preloadBuffers = {};
+      for (var i = 0; i < files.length; i++) {
+        if (buffers[i]) {
+          window.__preloadBuffers[files[i].logicalUrl] = buffers[i];
+          console.log('[Preload] Stored buffer:', files[i].logicalUrl, '→', buffers[i].byteLength, 'bytes');
+        } else {
+          console.warn('[Preload] No buffer for:', files[i].logicalUrl);
+        }
+      }
+    });
+  })();
+</script>

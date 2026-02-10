@@ -1,0 +1,128 @@
+---
+interface Props {
+  tracks: { file: string; name: string }[];
+}
+
+const { tracks } = Astro.props;
+---
+
+<div id="js-music" data-tracks={JSON.stringify(tracks)}>
+  <button id="js-jam-btn" class="btn jam">Jam Out</button>
+  <button id="js-stfu-btn" class="btn stfu" style="display:none">STFU</button>
+  <div id="js-now-playing" class="now-playing" style="display:none"></div>
+</div>
+
+<style>
+  #js-music {
+    margin-top: 30px;
+  }
+
+  .btn {
+    background: none;
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .jam {
+    border: 1px solid var(--loader-accent);
+    color: var(--loader-accent);
+  }
+
+  .stfu {
+    border: 1px solid var(--loader-danger);
+    color: var(--loader-danger);
+    margin-left: 8px;
+  }
+
+  .now-playing {
+    color: var(--loader-fg-dim);
+    font-size: 0.75rem;
+    margin-top: 8px;
+  }
+</style>
+
+<script is:inline>
+  (function() {
+    var wrap = document.getElementById('js-music');
+    if (!wrap) return;
+    var btn = document.getElementById('js-jam-btn');
+    var stfu = document.getElementById('js-stfu-btn');
+    var np = document.getElementById('js-now-playing');
+    var tracks = JSON.parse(wrap.dataset.tracks || '[]');
+    if (!tracks.length) return;
+
+    var s = getComputedStyle(document.documentElement);
+    var accentColor = s.getPropertyValue('--loader-accent').trim();
+
+    var bag = [];
+    var audio = null;
+    var playing = false;
+
+    function shuffle(arr) {
+      for (var i = arr.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+      }
+      return arr;
+    }
+
+    function fillBag() {
+      bag = [];
+      for (var i = 0; i < tracks.length; i++) bag.push(i);
+      shuffle(bag);
+    }
+
+    function nextIndex() {
+      if (!bag.length) fillBag();
+      return bag.pop();
+    }
+
+    function playTrack() {
+      if (audio) { audio.pause(); audio.src = ''; }
+      var idx = nextIndex();
+      var track = tracks[idx];
+      audio = new Audio('/music/' + track.file);
+      audio.play();
+      playing = true;
+      var label = track.name;
+      np.textContent = 'Now playing: ' + label;
+      np.style.display = '';
+      btn.textContent = 'Next Track';
+      btn.style.background = accentColor;
+      btn.style.color = '#000';
+      stfu.style.display = '';
+      audio.addEventListener('ended', function() { playTrack(); });
+    }
+
+    function stopMusic() {
+      if (audio) { audio.pause(); audio.src = ''; audio = null; }
+      playing = false;
+      np.style.display = 'none';
+      stfu.style.display = 'none';
+      btn.textContent = 'Jam Out';
+      btn.style.background = 'none';
+      btn.style.color = accentColor;
+    }
+
+    btn.addEventListener('click', function() { playTrack(); });
+    stfu.addEventListener('click', function() { stopMusic(); });
+
+    // Clean up when loader is removed
+    var observer = new MutationObserver(function(mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        for (var j = 0; j < mutations[i].removedNodes.length; j++) {
+          if (mutations[i].removedNodes[j].id === 'js-loader') {
+            if (audio) { audio.pause(); audio.src = ''; }
+            observer.disconnect();
+            return;
+          }
+        }
+      }
+    });
+    observer.observe(document.getElementById('app'), { childList: true });
+  })();
+</script>

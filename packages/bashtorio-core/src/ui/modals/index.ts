@@ -77,7 +77,6 @@ export function setupModals(
   acknowledgements: { name: string; version: string; license: string; author?: string; url?: string }[],
 ): ModalHandles {
   const root = container.querySelector('.bashtorio-root') as HTMLElement;
-  const systembar = container.querySelector('.bashtorio-systembar') as HTMLElement;
 
   // Query custom elements
   const commandModal = container.querySelector('bt-command-modal') as CommandModal;
@@ -112,7 +111,6 @@ export function setupModals(
   const ackModal = container.querySelector('bt-acknowledgements-modal') as AcknowledgementsModal;
 
   // Initialize dependencies
-  networkModal.init({ systembar });
   settingsModal.init({ root });
   ackModal.init({ data: acknowledgements });
 

@@ -1295,12 +1295,7 @@ export class Renderer {
       let label: string;
       switch (machine.type) {
         case MachineType.SOURCE:  label = sprite ? '' : 'SRC';  break;
-        case MachineType.SINK: {
-          if (sprite) { label = ''; break; }
-          const sinkName = (machine as SinkMachine).name;
-          label = sinkName && sinkName.length > 4 ? sinkName.slice(0, 4) : (sinkName || 'SINK');
-          break;
-        }
+        case MachineType.SINK:  label = sprite ? '' : 'SINK'; break;
         case MachineType.DISPLAY: label = 'UTF8'; break;
         case MachineType.COMMAND: label = sprite ? '' : machine.command.split(/\s+/)[0]; break;
         case MachineType.NULL:     label = 'NULL'; break;
@@ -1432,8 +1427,19 @@ export class Renderer {
       this.drawGenericBufferDots(px, py, (machine as UnpackerMachine).outputBuffer.length);
     }
 
-    // Sink: swirling drain animation
+    // Sink: name label + swirling drain animation
     if (machine.type === MachineType.SINK) {
+      const sinkName = (machine as SinkMachine).name;
+      if (sinkName) {
+        ctx.font = FONT_PACKET_TINY;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        const truncName = ctx.measureText(sinkName).width > LABEL_MAX_WIDTH
+          ? sinkName.slice(0, 7) + '…'
+          : sinkName;
+        ctx.fillText(truncName, px + HALF_GRID, py + GRID_SIZE - DOT_Y_INSET);
+      }
       this.drawSinkDrain(px, py, machine as SinkMachine);
     }
 

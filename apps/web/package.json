@@ -4,9 +4,9 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node scripts/inject-bundle-size.mjs",
+    "build": "node scripts/generate-manifest.mjs && astro build",
     "preview": "astro preview",
-    "pages-deploy": "rm -f dist/v86/*-state.bin dist/v86/*-state.bin.br && node scripts/upload-state-r2.mjs && wrangler pages deploy dist"
+    "pages-deploy": "node scripts/upload-state-r2.mjs && wrangler pages deploy dist"
   },
   "dependencies": {
     "astro": "^4.0.0",

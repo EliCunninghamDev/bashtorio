@@ -46,6 +46,7 @@ async function main() {
 		},
 		bzimage_initrd_from_filesystem: true,
 		cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0",
+		net_device: { type: "virtio", relay_url: "wss://relay.widgetry.org/" },
 		autostart: true,
 	});
 

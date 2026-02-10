@@ -3,36 +3,33 @@ import { BaseModal } from './BaseModal';
 import * as vm from '../../game/vm';
 
 export class NetworkModal extends BaseModal {
-  private systembar: HTMLElement | null = null;
-
-  init(deps: { systembar: HTMLElement }) {
-    this.systembar = deps.systembar;
-  }
 
   template() {
     return html`
       <div class="modal-content">
         <h3>Network Settings</h3>
         <p class="modal-description">
-          Connect to a WebSocket relay to enable internet access in the VM.
-          Run your own relay locally for security.
+          The VM connects to the internet through a public WebSocket relay.
+          Public relays provide limited bandwidth — for best results, run a
+          private relay locally or in your network. The easiest way is via Docker:
         </p>
         <div class="form-group">
-          <label>Run the relay:</label>
+          <label>Run a private relay:</label>
           <code class="relay-docker-cmd">docker run --privileged -p 8080:80 --name relay benjamincburns/jor1k-relay:latest</code>
         </div>
         <div class="form-group">
-          <label>Relay URL:</label>
+          <label>Custom relay URL (leave blank for default):</label>
           <input type="text" class="relay-url" placeholder="ws://127.0.0.1:8080/">
         </div>
-        <p class="modal-warning">Networking is experimental. No warranty is provided. Use at your own risk.</p>
+        <p class="modal-warning">Networking is experimental. Changes require a page reload.</p>
         <div class="network-status">
           <span class="status-dot"></span>
-          <span class="status-text">Not connected</span>
+          <span class="status-text"></span>
         </div>
         <div class="modal-buttons">
           <button data-cancel>Close</button>
-          <button class="network-connect primary">Connect</button>
+          <button class="network-reset">Reset to Default</button>
+          <button class="network-connect primary">Save & Reload</button>
         </div>
       </div>
     `;
@@ -44,20 +41,22 @@ export class NetworkModal extends BaseModal {
 
     this.qs('.network-connect').addEventListener('click', () => {
       const url = this.qs<HTMLInputElement>('.relay-url').value.trim();
-      if (vm.getNetworkRelay() && !url) {
-        localStorage.removeItem('bashtorio_relay_url');
-        location.reload();
-      } else if (url) {
+      if (url) {
         if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
           alert('Relay URL must start with ws:// or wss://');
           return;
         }
         localStorage.setItem('bashtorio_relay_url', url);
-        location.reload();
       } else {
         localStorage.removeItem('bashtorio_relay_url');
-        this.updateNetworkUI();
       }
+      location.reload();
+    });
+
+    this.qs('.network-reset').addEventListener('click', () => {
+      localStorage.removeItem('bashtorio_relay_url');
+      this.qs<HTMLInputElement>('.relay-url').value = '';
+      location.reload();
     });
   }
 
@@ -70,25 +69,14 @@ export class NetworkModal extends BaseModal {
   updateNetworkUI() {
     const dot = this.qs<HTMLElement>('.status-dot');
     const text = this.qs<HTMLElement>('.status-text');
-    const connectBtn = this.qs<HTMLButtonElement>('.network-connect');
-    const networkBtn = this.systembar?.querySelector('.network-btn') as HTMLElement | null;
-    const savedRelay = localStorage.getItem('bashtorio_relay_url') || '';
+    const relay = vm.getNetworkRelay();
 
-    if (vm.getNetworkRelay()) {
+    if (relay) {
       dot.classList.add('connected');
-      text.textContent = 'Connected to ' + vm.getNetworkRelay();
-      connectBtn.textContent = 'Disconnect';
-      networkBtn?.classList.add('connected');
-    } else if (savedRelay) {
-      dot.classList.remove('connected');
-      text.textContent = 'Will connect on next reload';
-      connectBtn.textContent = 'Save & Reload';
-      networkBtn?.classList.remove('connected');
+      text.textContent = 'Connected to ' + relay;
     } else {
       dot.classList.remove('connected');
       text.textContent = 'Not connected';
-      connectBtn.textContent = 'Connect';
-      networkBtn?.classList.remove('connected');
     }
   }
 }

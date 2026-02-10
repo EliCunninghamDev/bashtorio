@@ -11,20 +11,11 @@ const VGA_MEMORY_SIZE = 2 * 1024 * 1024;
 const KERNEL_CMDLINE = 'rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0';
 
 // Timing (ms)
-const BOOT_TIMEOUT = 120_000;
 const SNAPSHOT_SETTLE_DELAY = 1000;
-const NETWORK_DELAY = 2000;
-const LOGIN_SEND_DELAY = 500;
-const SHELL_CONFIG_DELAY = 500;
-const CMD_STEP_DELAY = 100;
 
-// Serial prompts that indicate boot stages
-const LOGIN_PROMPTS = ['Files send via emulator', 'localhost login:'];
-const SHELL_PROMPTS = ['/ #', '~%', '# ', 'localhost:~#'];
-
-// Serial buffer limits
-const SERIAL_BUF_MAX = 50_000;
-const SERIAL_BUF_TRIM = 25_000;
+// Network relay
+const DEFAULT_RELAY_URL = 'wss://relay.widgetry.org/';
+const RELAY_STORAGE_KEY = 'bashtorio_relay_url';
 
 // Guest filesystem paths
 const GUEST_BASE = '/tmp/bashtorio';
@@ -59,140 +50,81 @@ export class V86Bridge {
 
   async init(config: VMConfig): Promise<void> {
     const {
-      vmAssetsUrl, vmSnapshot, rootfsBaseUrl,
-      rootfsManifest, screenContainer, networkRelayUrl, preloadBuffers, onStatus = () => {},
+      vmAssetsUrl, vmStateUrl, rootfsBaseUrl,
+      rootfsManifest, screenContainer, preloadBuffers, onStatus = () => {},
     } = config;
 
-    onStatus('Creating emulator...');
+    const networkRelayUrl = localStorage.getItem(RELAY_STORAGE_KEY) || DEFAULT_RELAY_URL;
+    const stateUrl = vmStateUrl.startsWith('http') ? vmStateUrl : `${vmAssetsUrl}/${vmStateUrl}`;
 
-    // Resolve state buffer before creating emulator (needs await)
-    let resolvedStateBuffer: ArrayBuffer | undefined;
-    if (vmSnapshot) {
-      const stateUrl = vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}`;
-      resolvedStateBuffer = preloadBuffers?.[stateUrl];
-      if (!resolvedStateBuffer) {
-        log.warn(`Preloaded state buffer not found for "${stateUrl}", keys: [${preloadBuffers ? Object.keys(preloadBuffers).join(', ') : 'none'}]`);
-        const brUrl = `${stateUrl}.br`;
-        try {
-          onStatus('Downloading compressed state...');
-          const res = await fetch(brUrl);
-          if (res.ok && res.body) {
-            onStatus('Decompressing state...');
-            const decompressed = res.body.pipeThrough(new DecompressionStream('br' as CompressionFormat));
-            resolvedStateBuffer = await new Response(decompressed).arrayBuffer();
-            log.info(`Fetched and decompressed state from ${brUrl} (${(resolvedStateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
-          }
-        } catch (e) {
-          log.warn(`Failed to fetch/decompress ${brUrl}:`, e);
+    // Resolve state buffer: preloaded → gzip fetch → direct URL fallback
+    let stateBuffer = preloadBuffers?.[stateUrl];
+    if (stateBuffer) {
+      log.info(`Using preloaded state buffer (${(stateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
+    } else {
+      log.warn(`Preloaded buffer not found for "${stateUrl}", keys: [${preloadBuffers ? Object.keys(preloadBuffers).join(', ') : 'none'}]`);
+      const gzUrl = `${stateUrl}.gz`;
+      try {
+        onStatus('Downloading VM state...');
+        const res = await fetch(gzUrl);
+        if (res.ok && res.body) {
+          onStatus('Decompressing VM state...');
+          stateBuffer = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+          log.info(`Fetched and decompressed state from ${gzUrl} (${(stateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
         }
+      } catch (e) {
+        log.warn(`Failed to fetch/decompress ${gzUrl}:`, e);
       }
     }
 
-    return new Promise((resolve, reject) => {
-      const v86Config: V86Config = {
-        wasm_path: `${vmAssetsUrl}/v86.wasm`,
-        memory_size: MEMORY_SIZE,
-        vga_memory_size: VGA_MEMORY_SIZE,
-        screen_container: screenContainer,
-        bios: { url: `${vmAssetsUrl}/seabios.bin` },
-        vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
-        autostart: true,
-        filesystem: {
-          basefs: `${vmAssetsUrl}/${rootfsManifest}`,
-          baseurl: rootfsBaseUrl || `${vmAssetsUrl}/alpine-rootfs-flat/`,
-        },
-        bzimage_initrd_from_filesystem: true,
-        cmdline: KERNEL_CMDLINE,
-      };
+    onStatus('Restoring VM state...');
 
-      if (vmSnapshot) {
-        const stateUrl = vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}`;
-        if (resolvedStateBuffer) {
-          v86Config.initial_state = { buffer: resolvedStateBuffer };
-          log.info(`Using state buffer (${(resolvedStateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
-        } else {
-          v86Config.initial_state = { url: stateUrl };
-          log.warn(`Falling back to direct URL fetch: ${stateUrl}`);
-        }
-        onStatus('Restoring state...');
-      }
+    const v86Config: V86Config = {
+      wasm_path: `${vmAssetsUrl}/v86.wasm`,
+      memory_size: MEMORY_SIZE,
+      vga_memory_size: VGA_MEMORY_SIZE,
+      screen_container: screenContainer,
+      bios: preloadBuffers?.[`${vmAssetsUrl}/seabios.bin`]
+        ? { buffer: preloadBuffers[`${vmAssetsUrl}/seabios.bin`] }
+        : { url: `${vmAssetsUrl}/seabios.bin` },
+      vga_bios: preloadBuffers?.[`${vmAssetsUrl}/vgabios.bin`]
+        ? { buffer: preloadBuffers[`${vmAssetsUrl}/vgabios.bin`] }
+        : { url: `${vmAssetsUrl}/vgabios.bin` },
+      autostart: true,
+      filesystem: {
+        basefs: `${vmAssetsUrl}/${rootfsManifest}`,
+        baseurl: rootfsBaseUrl || `${vmAssetsUrl}/alpine-rootfs-flat/`,
+      },
+      bzimage_initrd_from_filesystem: true,
+      cmdline: KERNEL_CMDLINE,
+      net_device: { type: 'virtio', relay_url: networkRelayUrl },
+      initial_state: stateBuffer
+        ? { buffer: stateBuffer }
+        : { url: stateUrl },
+    };
+    this._networkRelay = networkRelayUrl;
 
-      if (networkRelayUrl) {
-        v86Config.network_relay_url = networkRelayUrl;
-        this._networkRelay = networkRelayUrl;
-        onStatus('Creating emulator with network...');
-      }
+    if (!stateBuffer) log.warn(`No buffer available, v86 will fetch directly: ${stateUrl}`);
 
-      this.emulator = new V86(v86Config) as V86Emulator;
+    this.emulator = new V86(v86Config) as V86Emulator;
 
-      if (vmSnapshot) {
-        onStatus('Restoring state...');
-        setTimeout(async () => {
-          try {
-            if (this._networkRelay) {
-              onStatus('Configuring network...');
-              this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-              await this.sleep(NETWORK_DELAY);
-            }
-            this._ready = true;
-            onStatus('State loaded, ready!');
-            await this.mount9p(onStatus);
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        }, SNAPSHOT_SETTLE_DELAY);
-      }
-
-      let booted = !!vmSnapshot;
-      let sentEnter = false;
-      let buffer = '';
-
-      this.emulator.add_listener('serial0-output-byte', (byte: number) => {
-        const char = String.fromCharCode(byte);
-        buffer += char;
-        if (buffer.length > SERIAL_BUF_MAX) buffer = buffer.slice(-SERIAL_BUF_TRIM);
-
-        if (!booted) {
-          if (!sentEnter && LOGIN_PROMPTS.some(p => buffer.includes(p))) {
-            sentEnter = true;
-            onStatus('Starting shell...');
-            setTimeout(() => this.emulator!.serial0_send('\n'), LOGIN_SEND_DELAY);
-          }
-
-          if (sentEnter && SHELL_PROMPTS.some(p => buffer.includes(p))) {
-            booted = true;
-            onStatus('Configuring...');
-            setTimeout(async () => {
-              try {
-                this.emulator!.serial0_send('stty -echo\n');
-                await this.sleep(CMD_STEP_DELAY);
-                this.emulator!.serial0_send('PS1=""\n');
-                await this.sleep(CMD_STEP_DELAY);
-                this.emulator!.serial0_send(`mkdir -p ${GUEST_BASE}\n`);
-                await this.sleep(CMD_STEP_DELAY);
-
-                if (this._networkRelay) {
-                  onStatus('Configuring network...');
-                  this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-                  await this.sleep(NETWORK_DELAY);
-                }
-
-                this._ready = true;
-                await this.mount9p(onStatus);
-                resolve();
-              } catch (err) {
-                reject(err);
-              }
-            }, SHELL_CONFIG_DELAY);
-          }
-        }
+    // Wait for v86 to finish loading all assets and start the CPU
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Emulator ready timeout')), 120_000);
+      this.emulator!.add_listener('emulator-ready', () => {
+        clearTimeout(timeout);
+        resolve();
       });
-
-      setTimeout(() => {
-        if (!booted) reject(new Error('Boot timeout'));
-      }, BOOT_TIMEOUT);
     });
+    log.info('Emulator ready');
+
+    // Brief settle after state restore before sending serial commands
+    await new Promise(r => setTimeout(r, SNAPSHOT_SETTLE_DELAY));
+
+    this.emulator.serial0_send('(ip link set eth0 up && udhcpc -i eth0) >/dev/null 2>&1 &\n');
+    this._ready = true;
+    onStatus('Configuring VM...');
+    await this.mount9p(onStatus);
   }
 
   destroy(): void {
@@ -301,10 +233,6 @@ export class V86Bridge {
   // Private
   // ---------------------------------------------------------------------------
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise(r => setTimeout(r, ms));
-  }
-
   private async mount9p(onStatus: (status: string) => void): Promise<void> {
     if (!this.emulator) return;
 
@@ -313,6 +241,8 @@ export class V86Bridge {
     log.info('Setting up 9p job directory...');
     onStatus('Setting up 9p job directory...');
     this.ensure9pDir(HOST_JOBS);
+    log.info('Created 9p job directory');
+    onStatus('Created 9p job directory');
     const ready = this.waitForSerial(marker);
     this.emulator.serial0_send(`mkdir -p ${GUEST_JOBS} && echo ${marker}\n`);
     await ready;

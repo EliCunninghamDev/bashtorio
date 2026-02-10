@@ -11,7 +11,8 @@
     "build:rootfs": "bash scripts/alpine/build.sh",
     "build:state": "node scripts/alpine/build-state.js",
     "build:v86": "bash scripts/build-v86.sh",
-    "build:all": "pnpm setup && pnpm build:v86 && pnpm build:rootfs && pnpm build:state && pnpm build",
+    "build:compress": "gzip -kf9 apps/web/public/v86/alpine-state.bin",
+    "build:all": "pnpm setup && pnpm build:v86 && pnpm build:rootfs && pnpm build:state && pnpm build:compress && pnpm build",
     "pages-deploy": "pnpm build && pnpm --filter web pages-deploy"
   },
   "keywords": ["game", "unix", "pipes", "linux", "v86", "emulator"],

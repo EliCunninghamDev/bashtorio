@@ -1,0 +1,30 @@
+:root {
+  --loader-bg: #000;
+  --loader-fg: #fff;
+  --loader-fg-muted: #aaa;
+  --loader-fg-dim: #888;
+  --loader-fg-faint: #555;
+  --loader-accent: #00ff41;
+  --loader-danger: #ff4141;
+  --loader-track-bg: #111;
+  --loader-track-border: #333;
+  --loader-font: 'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'JetBrains Mono', 'Segoe UI', system-ui, sans-serif;
+  background: var(--ui-bg, #1a1a2e);
+  color: #eee;
+  overflow: hidden;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}

@@ -98,13 +98,12 @@ const log = createLogger('Mount');
 export interface BashtorioConfig {
   container: HTMLElement;
   vmAssetsUrl: string;
-  /** Skips boot when provided */
-  vmSnapshot?: string;
+  /** VM state snapshot identifier (URL or filename relative to vmAssetsUrl) */
+  vmStateUrl: string;
   /** @deprecated Use assets.rootfsBaseUrl instead */
   rootfsBaseUrl?: string;
   /** 9p rootfs JSON manifest filename */
   rootfsManifest: string;
-  networkRelayUrl?: string;
   /** @deprecated Use assets.soundsUrl instead */
   soundsUrl?: string;
   /** Unified asset URL overrides */
@@ -332,7 +331,7 @@ function setupMachinePicker(
 }
 
 export async function mount(config: BashtorioConfig): Promise<BashtorioInstance> {
-  const { container, vmAssetsUrl, vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, assets, onBootStatus, onReady, onError } = config;
+  const { container, vmAssetsUrl, vmStateUrl, rootfsBaseUrl, rootfsManifest, soundsUrl, assets, onBootStatus, onReady, onError } = config;
 
   initAssets(vmAssetsUrl, {
     soundsUrl: soundsUrl ?? assets?.soundsUrl,
@@ -447,11 +446,10 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   try {
     await vm.initVM({
       vmAssetsUrl,
-      vmSnapshot,
+      vmStateUrl,
       rootfsBaseUrl,
       rootfsManifest,
       screenContainer,
-      networkRelayUrl,
       preloadBuffers,
       onStatus: setStatus,
     });
