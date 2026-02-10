@@ -47,6 +47,7 @@ export class Toolbar {
       <bt-event-button event="openManual" btn-class="action-btn" title="Controls Reference" label="📖"></bt-event-button>
       <div class="systembar-spacer"></div>
       <bt-vm-status></bt-vm-status>
+      <bt-fs-cache></bt-fs-cache>
       <bt-event-button event="openNetwork" btn-class="action-btn" label="🌐"></bt-event-button>
       <button class="action-btn mute-btn" title="Toggle Sound">${isMuted() ? '🔇' : '🔊'}</button>
     `, systembar);

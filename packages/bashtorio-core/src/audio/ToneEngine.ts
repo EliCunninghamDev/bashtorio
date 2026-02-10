@@ -35,6 +35,8 @@ const FILTER_FREQ = 4000;  // Hz
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let limiter: DynamicsCompressorNode | null = null;
+let volumeLevel = 0.5;
+let muted = false;
 const activeTones = new Map<string, ActiveTone>();
 
 function ensureContext(): AudioContext {
@@ -67,15 +69,32 @@ function gainFor(waveform: OscillatorType): number {
   return WAVEFORM_GAIN[waveform] ?? 0.15;
 }
 
-function startTone(id: string, freq: number, waveform: OscillatorType): void {
+function buildPulseWave(ac: AudioContext, duty: number): PeriodicWave {
+  const N = 64;
+  const real = new Float32Array(N);
+  const imag = new Float32Array(N);
+  for (let n = 1; n < N; n++) {
+    const angle = 2 * Math.PI * n * duty;
+    real[n] = (2 / (n * Math.PI)) * Math.sin(angle);
+    imag[n] = (2 / (n * Math.PI)) * (1 - Math.cos(angle));
+  }
+  return ac.createPeriodicWave(real, imag);
+}
+
+function startTone(id: string, freq: number, waveform: OscillatorType, dutyCycle: number): void {
   const ac = ensureContext();
   const targetGain = gainFor(waveform);
+  const usePulse = waveform === 'square' && dutyCycle !== 0.5;
   const existing = activeTones.get(id);
 
   if (existing) {
     // Smooth glide avoids clicks between notes
     existing.osc.frequency.setTargetAtTime(freq, ac.currentTime, 0.005);
-    existing.osc.type = waveform;
+    if (usePulse) {
+      existing.osc.setPeriodicWave(buildPulseWave(ac, dutyCycle));
+    } else {
+      existing.osc.type = waveform;
+    }
     existing.gain.gain.setTargetAtTime(targetGain, ac.currentTime, 0.005);
     return;
   }
@@ -84,7 +103,11 @@ function startTone(id: string, freq: number, waveform: OscillatorType): void {
   const filter = ac.createBiquadFilter();
   const gain = ac.createGain();
 
-  osc.type = waveform;
+  if (usePulse) {
+    osc.setPeriodicWave(buildPulseWave(ac, dutyCycle));
+  } else {
+    osc.type = waveform;
+  }
   osc.frequency.setValueAtTime(freq, ac.currentTime);
 
   // 4 kHz low-pass: tames saw/square harmonics, transparent for sine/triangle
@@ -126,23 +149,29 @@ function stopAllTones(): void {
   activeTones.clear();
 }
 
-function setMuted(muted: boolean): void {
-  if (masterGain) {
-    masterGain.gain.setValueAtTime(muted ? 0 : 1, ctx!.currentTime);
+function applyGain(): void {
+  if (masterGain && ctx) {
+    masterGain.gain.setValueAtTime(muted ? 0 : volumeLevel, ctx.currentTime);
   }
 }
 
+export function setToneVolume(vol: number): void {
+  volumeLevel = vol;
+  applyGain();
+}
+
 export function connectToneEvents(): void {
-  onGameEvent('toneNote', ({ machineId, byte, waveform }) => {
+  onGameEvent('toneNote', ({ machineId, byte, waveform, dutyCycle }) => {
     if (byte === 0) {
       stopTone(machineId);
     } else {
-      startTone(machineId, byteToFreq(byte), waveform);
+      startTone(machineId, byteToFreq(byte), waveform, dutyCycle);
     }
   });
 
-  onGameEvent('muteChanged', ({ muted }) => {
-    setMuted(muted);
+  onGameEvent('muteChanged', ({ muted: m }) => {
+    muted = m;
+    applyGain();
   });
 
   onGameEvent('simulationEnded', () => {

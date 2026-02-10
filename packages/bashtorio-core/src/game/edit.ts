@@ -1,7 +1,6 @@
 import { CellType, MachineType, Direction, type Cell, type Machine, type SplitterMachine, type MachineByType, type MachineBase } from './types';
 import { getCellType, getCell, getMachineIndex, setMachineCell, setBelt, setEmpty, reindexAfterSplice } from './grid';
 import { NO_MACHINE } from './ChunkedGrid';
-import * as vm from './vm';
 import { machines, createMachine } from './machines';
 
 // ---------------------------------------------------------------------------
@@ -92,10 +91,10 @@ export function clearCell(x: number, y: number): void | Cell {
     if (mi === NO_MACHINE) return;
     const machine = machines[mi];
 
-    // Destroy shell session if it exists
-    if (machine?.type === MachineType.COMMAND) {
-      const machineId = `m_${machine.x}_${machine.y}`;
-      vm.destroyShell(machineId);
+    // Stop shell if simulation is running
+    if (machine?.type === MachineType.COMMAND && machine.shell) {
+      machine.shell.stop();
+      machine.shell = null;
     }
 
     // For splitters, clear both cells

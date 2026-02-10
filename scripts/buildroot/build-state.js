@@ -1,48 +1,50 @@
 #!/usr/bin/env node
 /**
- * Boots the Alpine 9p-root image in v86 and saves a pre-booted state file.
- * Usage: node scripts/alpine/build-state.js
+ * Boots the Buildroot 9p-root image in v86 and saves a pre-booted state file.
+ * Usage: node scripts/buildroot/build-state.js
+ *
+ * Uses libv86-node.mjs (patched for Node.js fs/promises support).
  */
 
 const fs = require("fs");
 const path = require("path");
 
 const V86_DIR = path.join(__dirname, "../../apps/web/public/v86");
-const STATE_FILE = path.join(V86_DIR, "alpine-state.bin");
+const DISTRO = "buildroot";
+const STATE_FILE = path.join(V86_DIR, `${DISTRO}-state.bin`);
 
 const V86_MJS = path.join(__dirname, "../../packages/bashtorio-core/vendor/v86/libv86-node.mjs");
 const V86_WASM = path.join(V86_DIR, "v86.wasm");
 
 async function main() {
 	if (!fs.existsSync(V86_MJS)) {
-		console.error("Vendored v86 not found at", V86_MJS);
-		console.error("Run: bash scripts/build-v86.sh");
+		console.error("Vendored v86 (node) not found at", V86_MJS);
 		process.exit(1);
 	}
 
-	const alpineFsJson = path.join(V86_DIR, "alpine-fs.json");
-	const alpineRootfsFlat = path.join(V86_DIR, "alpine-rootfs-flat");
+	const fsJson = path.join(V86_DIR, `${DISTRO}-fs.json`);
+	const fsFlat = path.join(V86_DIR, `${DISTRO}-rootfs-flat`);
 
-	if (!fs.existsSync(alpineFsJson)) {
-		console.error("alpine-fs.json not found. Run scripts/alpine/build.sh first.");
+	if (!fs.existsSync(fsJson)) {
+		console.error(`${DISTRO}-fs.json not found. Run scripts/buildroot/build.sh first.`);
 		process.exit(1);
 	}
 
 	console.log("Loading v86 from", V86_MJS);
 	const { V86 } = await import("file://" + V86_MJS);
 
-	console.log("Booting Alpine Linux...");
+	console.log(`Booting ${DISTRO} Linux...`);
 
 	const emulator = new V86({
 		wasm_path: V86_WASM,
-		memory_size: 512 * 1024 * 1024,
+		memory_size: 128 * 1024 * 1024,
 		vga_memory_size: 2 * 1024 * 1024,
 		screen_container: null,
 		bios: { url: path.join(V86_DIR, "seabios.bin") },
 		vga_bios: { url: path.join(V86_DIR, "vgabios.bin") },
 		filesystem: {
-			basefs: alpineFsJson,
-			baseurl: alpineRootfsFlat + "/",
+			basefs: fsJson,
+			baseurl: fsFlat + "/",
 		},
 		bzimage_initrd_from_filesystem: true,
 		cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0",
@@ -66,7 +68,7 @@ async function main() {
 		}, 120000);
 
 		const check = setInterval(() => {
-			if (buffer.includes("localhost:~#") || buffer.includes("localhost login:") || buffer.includes("~ #")) {
+			if (buffer.includes("localhost:~#") || buffer.includes("localhost login:") || buffer.includes("~ #") || buffer.includes("/ #")) {
 				if (!booted) {
 					booted = true;
 					console.log("\n\n=== Boot detected! ===");
@@ -87,8 +89,6 @@ async function main() {
 
 	// Configure shell
 	console.log("Configuring shell...");
-	emulator.serial0_send("hostname localhost\n");
-	await new Promise(r => setTimeout(r, 500));
 	emulator.serial0_send("stty -echo\n");
 	await new Promise(r => setTimeout(r, 500));
 	emulator.serial0_send('PS1="localhost:~# "\n');
@@ -114,6 +114,11 @@ async function main() {
 
 	const sizeMB = (stateBuffer.length / 1024 / 1024).toFixed(1);
 	console.log(`\nState saved: ${STATE_FILE} (${sizeMB} MB)`);
+
+	try {
+		const alpineSize = (fs.statSync(path.join(V86_DIR, "alpine-state.bin")).size / 1024 / 1024).toFixed(1);
+		console.log(`Compare: Alpine state is ${alpineSize} MB`);
+	} catch {}
 
 	emulator.stop();
 	process.exit(0);

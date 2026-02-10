@@ -3,6 +3,10 @@
 import { onGameEvent, emitGameEvent, type GameEvent } from '../events/bus';
 import type { Settings } from '../util/settings';
 import { saveSettings } from '../util/settings';
+import { soundAsset } from '../util/assets';
+import { createLogger } from '../util/logger';
+
+const log = createLogger('Sound');
 
 // ── Sound manifest ─────────────────────────────────────────────────
 
@@ -26,6 +30,12 @@ const SOUND_MANIFEST = {
   sinkReceive:        {},
   streamWrite:        { variants: 3 },
   pack:               {},
+  flipperClick:       {},
+  wirelessSend:       {},
+  gateOpen:           {},
+  gatePass:           {},
+  latchStore:         {},
+  latchRelease:       {},
   drumKick:           {},
   drumSnare:          {},
   drumHat:            {},
@@ -66,7 +76,6 @@ const LOOP_MAP: Partial<Record<GameEvent, ({ startLoop: SoundName } | { stopLoop
 };
 
 export interface SoundSystemConfig {
-  assetsUrl: string;
   muted?: boolean;
   ambientVolume?: number;
   machineVolume?: number;
@@ -84,7 +93,6 @@ let variantBuffers = new Map<SoundName, AudioBuffer[]>();
 let activeLoops = new Map<SoundName, AudioBufferSourceNode>();
 let lastPlayTime = new Map<SoundName, number>();
 
-let assetsUrl = '';
 let _muted = false;
 let _ambientVolume = 1;
 let _machineVolume = 1;
@@ -117,7 +125,6 @@ function channelFor(name: SoundName): GainNode {
 // ── Public API ─────────────────────────────────────────────────────
 
 export function initSound(config: SoundSystemConfig): void {
-  assetsUrl = config.assetsUrl.replace(/\/$/, '');
   _muted = config.muted ?? false;
   _ambientVolume = config.ambientVolume ?? 1;
   _machineVolume = config.machineVolume ?? 1;
@@ -137,7 +144,7 @@ export async function loadSounds(): Promise<void> {
       if (!resp) {
         resp = await fetch(url);
         if (!resp.ok) {
-          console.warn(`[SoundSystem] Failed to fetch: ${url} (${resp.status})`);
+          log.warn(`Failed to fetch: ${url} (${resp.status})`);
           return null;
         }
         if (cache) await cache.put(url, resp.clone());
@@ -146,7 +153,7 @@ export async function loadSounds(): Promise<void> {
       loadedFiles++;
       return audioBuf;
     } catch (e) {
-      console.warn(`[SoundSystem] Error loading sound ${url}:`, e);
+      log.warn(`Error loading sound ${url}:`, e);
       return null;
     }
   };
@@ -156,18 +163,18 @@ export async function loadSounds(): Promise<void> {
     if (def.variants) {
       const loaded: AudioBuffer[] = [];
       for (let i = 1; i <= def.variants; i++) {
-        const buf = await loadOne(`${assetsUrl}/${name}${i}.mp3`);
+        const buf = await loadOne(soundAsset(`${name}${i}.mp3`));
         if (buf) loaded.push(buf);
       }
       if (loaded.length > 0) variantBuffers.set(name, loaded);
     } else {
-      const buf = await loadOne(`${assetsUrl}/${name}.mp3`);
+      const buf = await loadOne(soundAsset(`${name}.mp3`));
       if (buf) buffers.set(name, buf);
     }
   });
 
   await Promise.all(loadPromises);
-  console.log(`[SoundSystem] Loaded ${loadedFiles}/${totalFiles} sounds`);
+  log.info(`Loaded ${loadedFiles}/${totalFiles} sounds`);
 }
 
 export function connectSoundEvents(settings?: Settings): void {
@@ -190,7 +197,7 @@ export function connectSoundEvents(settings?: Settings): void {
       const last = lastPlayTime.get('shellTypeEnter') ?? 0;
       if (now - last < KEYPRESS_MIN_INTERVAL) return;
       lastPlayTime.set('shellTypeEnter', now);
-      console.log('[SoundSystem] shellTypeEnter');
+      log.debug('shellTypeEnter');
       play('shellTypeEnter');
     } else {
       const now = performance.now();
@@ -219,6 +226,25 @@ export function connectSoundEvents(settings?: Settings): void {
     play('pack', { randomPitch: 0.15 });
   });
   unsubscribers.push(packUnsub);
+
+  const MACHINE_SOUND_EVENTS: [GameEvent, SoundName, number?][] = [
+    ['flipperRotate', 'flipperClick'],
+    ['wirelessSend', 'wirelessSend'],
+    ['gateOpen', 'gateOpen'],
+    ['gatePass', 'gatePass'],
+    ['latchStore', 'latchStore'],
+    ['latchRelease', 'latchRelease'],
+  ];
+  for (const [event, sound, pitch] of MACHINE_SOUND_EVENTS) {
+    const unsub = onGameEvent(event, () => {
+      const now = performance.now();
+      const last = lastPlayTime.get(sound) ?? 0;
+      if (now - last < KEYPRESS_MIN_INTERVAL) return;
+      lastPlayTime.set(sound, now);
+      play(sound, { randomPitch: pitch ?? 0.1 });
+    });
+    unsubscribers.push(unsub);
+  }
 
   const DRUM_SAMPLES: SoundName[] = ['drumKick', 'drumSnare', 'drumHat', 'drumTom'];
   const drumUnsub = onGameEvent('drumHit', ({ sample }) => {

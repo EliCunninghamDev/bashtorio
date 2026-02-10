@@ -25,7 +25,7 @@ export class WirelessModal extends BaseModal {
             <span class="machine-panel-title">Wireless</span>
           </div>
           <div class="machine-panel-body">
-            <p class="modal-description">Broadcasts received bytes to all other wireless machines on the same channel.</p>
+            <p class="modal-description">Broadcasts received packets to all other wireless machines on the same channel.</p>
             <div class="form-group">
               <label>Channel:</label>
               <div class="channel-row">

@@ -17,6 +17,22 @@ export interface V86Config {
   cmdline?: string;
 }
 
+/** Minimal typing for v86's internal 9p filesystem (not public API) */
+export interface V86Inode {
+  direntries: Map<string, number>;
+  mode: number;
+  size: number;
+}
+
+export interface V86FS9P {
+  inodes: V86Inode[];
+  Search(parentid: number, name: string): number;
+  GetChildren(id: number): number[];
+  IsDirectory(id: number): boolean;
+  SearchPath(path: string): { id: number; parentid: number; name: string };
+  CreateDirectory(name: string, parentid: number): number;
+}
+
 export interface V86Emulator {
   add_listener(event: string, callback: (data: number) => void): void;
   remove_listener(event: string, callback: (data: number) => void): void;
@@ -31,4 +47,6 @@ export interface V86Emulator {
   restore_state(state: ArrayBuffer): Promise<void>;
   create_file(path: string, data: Uint8Array): Promise<void>;
   read_file(path: string): Promise<Uint8Array>;
+  /** Internal 9p filesystem — not public API but accessible at runtime */
+  fs9p?: V86FS9P;
 }

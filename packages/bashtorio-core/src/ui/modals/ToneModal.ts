@@ -11,6 +11,26 @@ export class ToneModal extends BaseModal {
         <div class="machine-panel">
           <div class="machine-panel-header">
             <span class="machine-panel-title">Tone</span>
+            <div class="machine-panel-controls">
+              <div class="radio-group tone-duty">
+                <label class="radio-option">
+                  <input type="radio" name="tone-duty" value="0.125">
+                  <span>12.5%</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="tone-duty" value="0.25">
+                  <span>25%</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="tone-duty" value="0.5">
+                  <span>50%</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="tone-duty" value="0.75">
+                  <span>75%</span>
+                </label>
+              </div>
+            </div>
           </div>
           <div class="machine-panel-body">
             <p class="modal-description">Synthesizer - bytes 1-255 set frequency, 0 silences.</p>
@@ -48,12 +68,14 @@ export class ToneModal extends BaseModal {
   configure(machine: ToneMachine) {
     this.machine = machine;
     this.qs<HTMLInputElement>(`.tone-waveform input[value="${machine.waveform}"]`).checked = true;
+    this.qs<HTMLInputElement>(`.tone-duty input[value="${machine.dutyCycle}"]`).checked = true;
     this.show();
   }
 
   protected save() {
     if (this.machine) {
       this.machine.waveform = this.qs<HTMLInputElement>('.tone-waveform input:checked').value as OscillatorType;
+      this.machine.dutyCycle = parseFloat(this.qs<HTMLInputElement>('.tone-duty input:checked').value);
     }
     this.hide();
   }

@@ -32,6 +32,7 @@ const KEY_TO_PLACEABLE: Record<string, PlaceableType> = {
   o: 'clock',
   y: 'latch',
   z: 'sevenseg',
+  t: 'punchcard',
 };
 
 const EDITOR_KEYBINDS: Record<string, string> = {

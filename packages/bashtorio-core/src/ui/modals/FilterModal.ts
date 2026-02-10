@@ -15,7 +15,7 @@ export class FilterModal extends BaseModal {
             <span class="machine-panel-title">Filter</span>
           </div>
           <div class="machine-panel-body">
-            <p class="modal-description">Pass or block a specific byte.</p>
+            <p class="modal-description">Pass or block a specific packet.</p>
             <div class="form-group filter-byte-input-mount"></div>
             <div class="form-group">
               <label>Mode:</label>

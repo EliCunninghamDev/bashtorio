@@ -1,0 +1,55 @@
+# v86 requires: virtio, 9p, serial console
+# This is a fragment applied on top of i386_defconfig
+
+# 9p filesystem (required for root mount)
+CONFIG_NET_9P=y
+CONFIG_NET_9P_VIRTIO=y
+CONFIG_9P_FS=y
+CONFIG_9P_FS_POSIX_ACL=y
+
+# Virtio (v86's transport layer)
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_CONSOLE=y
+
+# Serial console
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+
+# Proc/sys/devtmpfs (needed for minimal userspace)
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_TMPFS=y
+
+# Disable stuff v86 doesn't need
+# CONFIG_SOUND is not set
+# CONFIG_USB_SUPPORT is not set
+# CONFIG_WLAN is not set
+# CONFIG_WIRELESS is not set
+# CONFIG_BLUETOOTH is not set
+# CONFIG_NF_CONNTRACK is not set
+# CONFIG_NETFILTER is not set
+# CONFIG_IP_NF_IPTABLES is not set
+# CONFIG_BLK_DEV_SD is not set
+# CONFIG_SCSI is not set
+# CONFIG_ATA is not set
+# CONFIG_DRM is not set
+# CONFIG_FB is not set
+# CONFIG_AGP is not set
+# CONFIG_INPUT_MOUSEDEV is not set
+# CONFIG_INPUT_JOYDEV is not set
+
+# Keep kernel small
+# CONFIG_MODULES is not set
+CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+CONFIG_KERNEL_XZ=y
+
+# Disable certificate/signing (avoids needing openssl-dev on host)
+# CONFIG_SYSTEM_TRUSTED_KEYRING is not set
+# CONFIG_SYSTEM_BLACKLIST_KEYRING is not set
+# CONFIG_MODULE_SIG is not set
+CONFIG_SYSTEM_TRUSTED_KEYS=""
+CONFIG_SYSTEM_REVOCATION_KEYS=""

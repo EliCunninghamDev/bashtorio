@@ -23,6 +23,7 @@ export const PLACEABLE_COLUMNS: PlaceableColumn[] = [
     { id: 'linefeed', icon: '↵', label: 'LF', key: 'C' },
     { id: 'clock', icon: '🕐', label: 'Clock', key: 'O' },
     { id: 'byte', icon: '🔢', label: 'Byte', key: '' },
+    { id: 'punchcard', icon: '🎴', label: 'Card', key: 'T' },
   ]},
   { label: 'Process', items: [
     { id: 'command', icon: '🖥️', label: 'Shell', key: 'F' },

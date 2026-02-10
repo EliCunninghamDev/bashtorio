@@ -11,6 +11,9 @@ import { getSplitterSecondary } from '../game/edit';
 import { machines, getSinkIdCounter, setSinkIdCounter, clearMachines } from '../game/machines';
 import { emitGameEvent, onGameEvent } from '../events/bus';
 import { PRESETS } from './presets';
+import { createLogger } from './logger';
+
+const log = createLogger('Save');
 
 /**
  * Serializable format for saved games (v2: sparse cell list)
@@ -83,6 +86,7 @@ interface SerializedMachine {
   latchControlDir?: number;
   splitterDir?: number;
   waveform?: string;
+  dutyCycle?: number;
   gapInterval?: number;
   speakRate?: number;
   speakPitch?: number;
@@ -92,6 +96,8 @@ interface SerializedMachine {
   screenWritePos?: number;
   byteData?: number[];
   byteInterval?: number;
+  cardData?: number[];
+  bitmask?: boolean;
 }
 
 const SAVE_VERSION = 2;
@@ -190,9 +196,11 @@ export function serializeState(state: GameState): SaveData {
       case MachineType.SEVENSEG:
         break;
       case MachineType.DRUM:
+        base.bitmask = m.bitmask;
         break;
       case MachineType.TONE:
         base.waveform = m.waveform;
+        if (m.dutyCycle !== 0.5) base.dutyCycle = m.dutyCycle;
         break;
       case MachineType.SPEAK:
         base.speakRate = m.speakRate;
@@ -208,6 +216,12 @@ export function serializeState(state: GameState): SaveData {
         base.byteData = Array.from(m.byteData);
         base.emitInterval = m.clock.interval;
         if (m.gapTimer.interval > 0) base.gapInterval = m.gapTimer.interval;
+        break;
+      case MachineType.PUNCHCARD:
+        base.cardData = Array.from(m.cardData);
+        base.emitInterval = m.clock.interval;
+        if (m.gapTimer.interval > 0) base.gapInterval = m.gapTimer.interval;
+        base.loop = m.loop;
         break;
     }
     return base;
@@ -287,11 +301,10 @@ export function deserializeState(state: GameState, data: SaveData): void {
           lastInputTime: 0,
           autoStartRan: false,
           cwd: '/',
-          activeJobId: '',
+          shell: null,
           lastPollTime: 0,
-          bytesRead: 0,
-          streamBytesWritten: 0,
-          lastStreamWriteTime: 0,
+          bytesIn: 0,
+          bytesOut: 0,
         };
         break;
       case MachineType.DISPLAY:
@@ -324,7 +337,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
         };
         break;
       case MachineType.DUPLICATOR:
-        machine = { ...base, type: MachineType.DUPLICATOR, outputBuffer: '' };
+        machine = { ...base, type: MachineType.DUPLICATOR, outputQueue: [] };
         break;
       case 'constant' as MachineType:
         machine = {
@@ -343,7 +356,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.FILTER,
           filterByte: sm.filterByte ?? '\n',
           filterMode: sm.filterMode ?? 'pass',
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.COUNTER:
@@ -361,7 +374,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.DELAY,
           delayMs: sm.delayMs ?? 1000,
           delayQueue: [],
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.KEYBOARD:
@@ -388,8 +401,8 @@ export function deserializeState(state: GameState, data: SaveData): void {
           routerByte: sm.routerByte ?? '\n',
           routerMatchDir: sm.routerMatchDir ?? Direction.RIGHT,
           routerElseDir: sm.routerElseDir ?? Direction.DOWN,
-          matchBuffer: '',
-          elseBuffer: '',
+          matchQueue: [],
+          elseQueue: [],
         };
         break;
       case MachineType.GATE:
@@ -399,7 +412,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           gateDataDir: sm.gateDataDir ?? Direction.LEFT,
           gateControlDir: sm.gateControlDir ?? Direction.UP,
           gateOpen: false,
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.WIRELESS:
@@ -408,7 +421,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.WIRELESS,
           wirelessChannel: sm.wirelessChannel ?? 0,
           wifiArc: 0,
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.REPLACE:
@@ -446,7 +459,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           latchDataDir: sm.latchDataDir ?? Direction.LEFT,
           latchControlDir: sm.latchControlDir ?? Direction.UP,
           latchStored: '',
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
 
@@ -456,17 +469,17 @@ export function deserializeState(state: GameState, data: SaveData): void {
           type: MachineType.SPLITTER,
           dir: sm.splitterDir ?? Direction.RIGHT,
           toggle: 0,
-          outputBuffer: '',
+          outputQueue: [],
         };
         break;
       case MachineType.SEVENSEG:
-        machine = { ...base, type: MachineType.SEVENSEG, lastByte: -1, outputBuffer: '' };
+        machine = { ...base, type: MachineType.SEVENSEG, lastByte: -1, outputQueue: [] };
         break;
       case MachineType.DRUM:
-        machine = { ...base, type: MachineType.DRUM, outputBuffer: '' };
+        machine = { ...base, type: MachineType.DRUM, bitmask: sm.bitmask ?? false, outputQueue: [] };
         break;
       case MachineType.TONE:
-        machine = { ...base, type: MachineType.TONE, waveform: (sm.waveform ?? 'sine') as OscillatorType };
+        machine = { ...base, type: MachineType.TONE, waveform: (sm.waveform ?? 'sine') as OscillatorType, dutyCycle: sm.dutyCycle ?? 0.5 };
         break;
       case MachineType.SPEAK:
         machine = {
@@ -501,6 +514,17 @@ export function deserializeState(state: GameState, data: SaveData): void {
           bytePos: 0,
           clock: new EmitTimer(sm.emitInterval ?? 500),
           gapTimer: new EmitTimer(sm.gapInterval ?? 0),
+        };
+        break;
+      case MachineType.PUNCHCARD:
+        machine = {
+          ...base,
+          type: MachineType.PUNCHCARD,
+          cardData: sm.cardData ? new Uint8Array(sm.cardData) : new Uint8Array(0),
+          cardPos: 0,
+          clock: new EmitTimer(sm.emitInterval ?? 500),
+          gapTimer: new EmitTimer(sm.gapInterval ?? 0),
+          loop: sm.loop ?? false,
         };
         break;
       default:
@@ -664,7 +688,7 @@ export async function loadFromURLParam(): Promise<SaveData | null> {
 	try {
 		return await loadFromBase64(factory);
 	} catch (e) {
-		console.error('Failed to load factory from URL:', e);
+		log.error('Failed to load factory from URL:', e);
 		return null;
 	}
 }
@@ -712,7 +736,7 @@ export function setupSaveLoadHandlers(
       deserializeState(state, data);
       emitGameEvent('saveLoaded', { source: 'file' });
     } catch (e) {
-      console.error('Failed to load save:', e);
+      log.error('Failed to load save:', e);
       alert('Failed to load save file: ' + (e instanceof Error ? e.message : String(e)));
     }
   });

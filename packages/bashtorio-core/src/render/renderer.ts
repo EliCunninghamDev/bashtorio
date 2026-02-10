@@ -1,5 +1,5 @@
-import { formatBytes } from '../util/format';
 import { CTRL_NAMES } from '../util/bytes';
+import { formatBytes } from '../util/format';
 import { type RGB, rgb, lerpRgb, rgbCSS } from '../util/colors';
 import {
   GRID_SIZE,
@@ -30,6 +30,7 @@ import {
   type UnpackerMachine,
   type ToneMachine,
   type ScreenMachine,
+  type PunchCardMachine,
   type BeltCell,
   type CursorMode,
   type OrphanedPacket,
@@ -43,6 +44,7 @@ import { getSplitterSecondary } from '../game/edit';
 import { machines } from '../game/machines';
 import * as cam from '../game/camera';
 import { now } from '../game/clock';
+import { spriteAsset } from '../util/assets';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -219,6 +221,7 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SPEAK]:      { bg: '#2a4a5a', border: '#4a8aaa', text: '#88ddff' },
   [MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
   [MachineType.BYTE]:       { bg: '#2a4a3a', border: '#4a8a6a', text: '#88ffcc' },
+  [MachineType.PUNCHCARD]:  { bg: '#4a4a2a', border: '#8a8a4a', text: '#ddcc88' },
 };
 
 const WIRELESS_CHANNEL_COLORS = [
@@ -319,7 +322,6 @@ function loadSprite(src: string): HTMLImageElement {
 
 export interface RendererConfig {
   canvas: HTMLCanvasElement;
-  spriteBase?: string;
 }
 
 export class Renderer {
@@ -339,7 +341,6 @@ export class Renderer {
     this.canvas = config.canvas;
     this.ctx = config.canvas.getContext('2d')!;
 
-    const base = config.spriteBase ?? '/sprites';
     const SPRITE_FILES: [MachineType, string][] = [
       [MachineType.COMMAND, 'terminal.png'],
       [MachineType.SINK,    'sink.png'],
@@ -348,7 +349,7 @@ export class Renderer {
     ];
     this.sprites = new Map();
     for (const [type, file] of SPRITE_FILES) {
-      this.sprites.set(type, loadSprite(`${base}/${file}`));
+      this.sprites.set(type, loadSprite(spriteAsset(file)));
     }
 
     window.addEventListener('resize', () => this.handleResize());
@@ -619,6 +620,9 @@ export class Renderer {
         break;
       case 'byte':
         this.drawPreviewSprite(col, row, MachineType.BYTE, 'BYTE');
+        break;
+      case 'punchcard':
+        this.drawMachineBox(col, row, MachineType.PUNCHCARD, 'CARD');
         break;
     }
 
@@ -1216,15 +1220,14 @@ export class Renderer {
         case MachineType.DRUM:       label = 'DRUM'; break;
         case MachineType.SPEAK:      label = 'TALK'; break;
         case MachineType.BYTE:       label = sprite ? '' : 'BYTE'; break;
+        case MachineType.PUNCHCARD:  label = sprite ? '' : 'CARD'; break;
 
       }
 
       // Flash effect for command/packer machines: white → green over FLASH_DURATION_MS
-      const flashTime = machine.type === MachineType.COMMAND
-        ? Math.max(machine.lastCommandTime, machine.lastStreamWriteTime)
-        : machine.type === MachineType.PACKER
-          ? machine.lastCommandTime
-          : 0;
+      const flashTime = (machine.type === MachineType.COMMAND || machine.type === MachineType.PACKER)
+        ? machine.lastCommandTime
+        : 0;
       if ((machine.type === MachineType.COMMAND || machine.type === MachineType.PACKER) && flashTime > 0) {
         const elapsed = now - flashTime;
         if (elapsed < FLASH_DURATION_MS) {
@@ -1300,13 +1303,13 @@ export class Renderer {
 
     // Duplicator: buffer dots
     if (machine.type === MachineType.DUPLICATOR) {
-      this.drawGenericBufferDots(px, py, (machine as DuplicatorMachine).outputBuffer.length);
+      this.drawGenericBufferDots(px, py, (machine as DuplicatorMachine).outputQueue.length);
     }
 
     // Delay: wandering mini packets for queued bytes
     if (machine.type === MachineType.DELAY) {
       const dm = machine as DelayMachine;
-      const chars = dm.delayQueue.map(q => q.char).join('') + dm.outputBuffer;
+      const chars = dm.delayQueue.map(q => q.char).join('') + dm.outputQueue.join('');
       this.drawDelayDots(px, py, chars);
     }
 
@@ -1350,7 +1353,7 @@ export class Renderer {
       // Output arrow
       const gateOutDir = this.findOutputDir(machine.x, machine.y);
       if (gateOutDir !== null) this.drawDirectionArrow(machine.x, machine.y, gateOutDir);
-      this.drawGenericBufferDots(px, py, gm.outputBuffer.length);
+      this.drawGenericBufferDots(px, py, gm.outputQueue.length);
     }
 
     // Latch: input arrows, stored dot, output arrow, buffer dots
@@ -1366,7 +1369,7 @@ export class Renderer {
       // Output arrow
       const latchOutDir = this.findOutputDir(machine.x, machine.y);
       if (latchOutDir !== null) this.drawDirectionArrow(machine.x, machine.y, latchOutDir);
-      this.drawGenericBufferDots(px, py, lm.outputBuffer.length);
+      this.drawGenericBufferDots(px, py, lm.outputQueue.length);
     }
 
     // Linefeed: timer progress arc
@@ -1390,6 +1393,20 @@ export class Renderer {
         this.drawTimerArc(machine.x, machine.y, 1, 1 - progress, MACHINE_COLORS[MachineType.SOURCE].border);
       }
     }
+
+    // PunchCard: progress arc (same pattern as SOURCE)
+    if (machine.type === MachineType.PUNCHCARD) {
+      const pc = machine as PunchCardMachine;
+      if (pc.loop && pc.cardData.length > 0) {
+        let progress: number;
+        if (pc.gapTimer.timeRemaining > 0 && pc.gapTimer.interval > 0) {
+          progress = clamp(1 - pc.gapTimer.timeRemaining / pc.gapTimer.interval, 0, 1);
+        } else {
+          progress = clamp(1 - pc.cardPos / pc.cardData.length, 0, 1);
+        }
+        this.drawTimerArc(machine.x, machine.y, 1, 1 - progress, MACHINE_COLORS[MachineType.PUNCHCARD].border);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1398,24 +1415,24 @@ export class Renderer {
 
   private drawBufferDots(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
-    const totalWidth = (DOT_COUNT - 1) * DOT_SPACING;
-    const startX = px + HALF_GRID - totalWidth / 2;
+    const centerX = px + HALF_GRID;
 
-    const inputFilled = machine.pendingInput.length % DOT_MOD;
+    // Input bytes (white, top)
+    if (machine.bytesIn > 0) {
+      ctx.font = FONT_PACKET_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(formatBytes(machine.bytesIn), centerX, py + DOT_Y_INSET);
+    }
 
-    // Input dots (bottom)
-    const botY = py + GRID_SIZE - DOT_Y_INSET;
-    for (let i = 0; i < DOT_COUNT; i++) {
-      ctx.beginPath();
-      ctx.arc(startX + i * DOT_SPACING, botY, DOT_RADIUS, 0, TAU);
-      if (i < inputFilled) {
-        ctx.fillStyle = CLR_INPUT_AMBER;
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = CLR_DOT_EMPTY;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
+    // Output bytes (amber, bottom)
+    if (machine.bytesOut > 0) {
+      ctx.font = FONT_PACKET_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = CLR_INPUT_AMBER;
+      ctx.fillText(formatBytes(machine.bytesOut), centerX, py + GRID_SIZE - DOT_Y_INSET);
     }
   }
 
@@ -1430,14 +1447,24 @@ export class Renderer {
   private drawStreamIndicator(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
     const centerX = px + HALF_GRID;
-    const botY = py + GRID_SIZE - DOT_Y_INSET;
-    const total = machine.streamBytesWritten + machine.bytesRead;
 
-    ctx.font = FONT_PACKET_TINY;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = machine.activeJobId ? CLR_INPUT_AMBER : CLR_DOT_EMPTY;
-    ctx.fillText(total > 0 ? formatBytes(total) : '', centerX, botY);
+    // Input bytes (white, top)
+    if (machine.bytesIn > 0) {
+      ctx.font = FONT_PACKET_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(formatBytes(machine.bytesIn), centerX, py + DOT_Y_INSET);
+    }
+
+    // Output bytes (amber, bottom)
+    if (machine.bytesOut > 0) {
+      ctx.font = FONT_PACKET_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = CLR_INPUT_AMBER;
+      ctx.fillText(formatBytes(machine.bytesOut), centerX, py + GRID_SIZE - DOT_Y_INSET);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -2064,8 +2091,7 @@ export class Renderer {
     lines.push(`$ ${command}`);
 
     if (machine.stream) {
-      lines.push(`> ${formatBytes(machine.streamBytesWritten)} in`);
-      lines.push(`< ${formatBytes(machine.bytesRead)} out`);
+      lines.push(machine.shell ? 'streaming...' : 'no shell');
     } else {
       const inputBuffer = machine.pendingInput || '';
       if (inputBuffer.length > 0) {

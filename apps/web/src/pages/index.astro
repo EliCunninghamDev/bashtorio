@@ -42,10 +42,87 @@
       width: 100vw;
       height: 100vh;
     }
+
+    @keyframes cursor-blink {
+      50% { opacity: 0; }
+    }
+
+    @keyframes bar-indeterminate {
+      0% { left: -30%; width: 30%; }
+      50% { left: 50%; width: 30%; }
+      100% { left: 100%; width: 30%; }
+    }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div id="js-loader" data-manifest="[]" style="position:fixed;inset:0;background:#000;display:flex;align-items:start;justify-content:center;padding-top:33vh;z-index:9999;font-family:'JetBrains Mono',Consolas,Monaco,'Courier New',monospace">
+      <div style="text-align:center;max-width:700px;padding:30px">
+        <h1 style="font-size:2.5rem;margin-bottom:5px;color:#fff">ba<span style="color:#00ff41">sh</span>torio<span style="display:inline-block;position:relative;bottom:0.15em;font-weight:bold;animation:cursor-blink 1s step-end infinite">_</span></h1>
+        <p style="color:#fff;margin-bottom:40px;font-size:1rem">A Unix Pipe Factory Game</p>
+        <div id="js-loader-status" style="color:#00ff41;margin-bottom:15px;font-size:0.9rem">Loading...</div>
+        <div style="width:300px;height:6px;background:#111;border:1px solid #333;border-radius:3px;overflow:hidden;margin:0 auto;position:relative">
+          <div id="js-loader-bar" style="height:100%;width:0%;background:#00ff41;border-radius:2px;transition:width 0.15s ease-out"></div>
+        </div>
+        <div id="js-loader-pct" style="color:#888;font-size:0.8rem;margin-top:8px"></div>
+        <div id="js-loader-files" style="color:#555;font-size:0.75rem;margin-top:4px"></div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    (function() {
+      var el = document.getElementById('js-loader');
+      if (!el) return;
+      var bar = document.getElementById('js-loader-bar');
+      var pct = document.getElementById('js-loader-pct');
+      var filesEl = document.getElementById('js-loader-files');
+      var status = document.getElementById('js-loader-status');
+      var manifest = JSON.parse(el.dataset.manifest || '[]');
+      var totalSize = 0;
+      var totalFiles = manifest.length;
+      for (var i = 0; i < manifest.length; i++) totalSize += manifest[i].size;
+
+      if (!totalSize) {
+        bar.style.cssText = 'height:100%;position:absolute;background:#00ff41;border-radius:2px;animation:bar-indeterminate 1.5s ease-in-out infinite';
+        return;
+      }
+
+      var bytesLoaded = 0;
+      var filesLoaded = 0;
+
+      function render() {
+        var p = Math.min(100, Math.round(bytesLoaded / totalSize * 100));
+        bar.style.width = p + '%';
+        pct.textContent = p + '%';
+        filesEl.textContent = filesLoaded + ' / ' + totalFiles + ' files';
+        if (filesLoaded >= totalFiles) status.textContent = 'Initializing...';
+      }
+
+      function trackFetch(url) {
+        return fetch(url).then(function(res) {
+          var reader = res.body.getReader();
+          return new Promise(function(resolve) {
+            function pump() {
+              reader.read().then(function(result) {
+                if (result.done) { filesLoaded++; render(); resolve(); return; }
+                bytesLoaded += result.value.length;
+                render();
+                pump();
+              }).catch(function() { filesLoaded++; render(); resolve(); });
+            }
+            pump();
+          });
+        }).catch(function() { filesLoaded++; render(); });
+      }
+
+      var promises = [];
+      for (var i = 0; i < manifest.length; i++) {
+        promises.push(trackFetch(manifest[i].url));
+      }
+      window.__preloadReady = Promise.all(promises);
+    })();
+  </script>
 
   <script>
     import 'bashtorio-core/style.css';

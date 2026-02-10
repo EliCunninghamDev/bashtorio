@@ -4,6 +4,7 @@ import { THEMES, getThemeById, applyUITheme } from '../../util/themes';
 import { applyRendererTheme, setPhotoTextures } from '../../render/renderer';
 import { loadSettings, saveSettings, type Settings } from '../../util/settings';
 import { setAmbientVolume, setMachineVolume } from '../../audio/SoundSystem';
+import { setToneVolume } from '../../audio/ToneEngine';
 
 export class SettingsModal extends BaseModal {
   private settings!: Settings;
@@ -27,10 +28,14 @@ export class SettingsModal extends BaseModal {
       this.qs<HTMLSelectElement>('.theme-select').value = this.settings.theme;
       const ambientSlider = this.qs<HTMLInputElement>('.ambient-vol-slider');
       const machineSlider = this.qs<HTMLInputElement>('.machine-vol-slider');
+      const toneSlider = this.qs<HTMLInputElement>('.tone-vol-slider');
       ambientSlider.value = String(this.settings.ambientVolume);
       this.qs<HTMLElement>('.ambient-vol-value').textContent = Math.round(this.settings.ambientVolume * 100) + '%';
       machineSlider.value = String(this.settings.machineVolume);
       this.qs<HTMLElement>('.machine-vol-value').textContent = Math.round(this.settings.machineVolume * 100) + '%';
+      toneSlider.value = String(this.settings.toneVolume);
+      this.qs<HTMLElement>('.tone-vol-value').textContent = Math.round(this.settings.toneVolume * 100) + '%';
+      setToneVolume(this.settings.toneVolume);
       this.qs<HTMLInputElement>('.photo-textures-check').checked = this.settings.photoTextures;
     }
   }
@@ -51,6 +56,10 @@ export class SettingsModal extends BaseModal {
         <div class="form-group">
           <label>Machine Volume: <span class="machine-vol-value">100%</span></label>
           <input type="range" class="styled-slider machine-vol-slider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="form-group">
+          <label>Tone Volume: <span class="tone-vol-value">50%</span></label>
+          <input type="range" class="styled-slider tone-vol-slider" min="0" max="1" step="0.05" value="0.5">
         </div>
         <div class="form-group">
           <label class="machine-panel-check">
@@ -94,6 +103,14 @@ export class SettingsModal extends BaseModal {
       setMachineVolume(vol);
       this.qs<HTMLElement>('.machine-vol-value').textContent = Math.round(vol * 100) + '%';
       this.settings.machineVolume = vol;
+      saveSettings(this.settings);
+    });
+
+    this.qs<HTMLInputElement>('.tone-vol-slider').addEventListener('input', () => {
+      const vol = parseFloat(this.qs<HTMLInputElement>('.tone-vol-slider').value);
+      setToneVolume(vol);
+      this.qs<HTMLElement>('.tone-vol-value').textContent = Math.round(vol * 100) + '%';
+      this.settings.toneVolume = vol;
       saveSettings(this.settings);
     });
 

@@ -22,8 +22,15 @@ import { createPacket, isCellEmpty } from './packets';
 import { emitGameEvent, onGameEvent } from '../events/bus';
 import type { Settings } from '../util/settings';
 import { saveSettings } from '../util/settings';
+import { MarkerShell } from '../vm/markerShell';
 import * as vm from './vm';
 import { now, delta } from './clock';
+import { createLogger } from '../util/logger';
+
+const log = createLogger('CMD');
+
+/** MarkerShell instances for non-stream COMMAND machines (keyed by machine object) */
+const markerShells = new WeakMap<CommandMachine, MarkerShell>();
 
 /** Wire event-bus listeners that belong to the simulation layer. */
 export function setupSimulationEvents(state: GameState, settings: Settings): void {
@@ -86,11 +93,15 @@ export function startSimulation(state: GameState): void {
         machine.processing = false;
         machine.lastInputTime = 0;
         machine.autoStartRan = false;
-        machine.activeJobId = '';
+        machine.shell = null;
         machine.lastPollTime = 0;
-        machine.bytesRead = 0;
-        machine.streamBytesWritten = 0;
-        machine.lastStreamWriteTime = 0;
+        machine.bytesIn = 0;
+        machine.bytesOut = 0;
+        markerShells.delete(machine);
+        // Create shell asynchronously
+        if (vm.isReady() && vm.isFs9pReady()) {
+          initCommandShell(machine);
+        }
         break;
       case MachineType.DISPLAY:
         machine.displayBuffer = '';
@@ -104,6 +115,8 @@ export function startSimulation(state: GameState): void {
         break;
       case MachineType.DUPLICATOR:
       case MachineType.FILTER:
+        machine.outputQueue = [];
+        break;
       case MachineType.KEYBOARD:
       case MachineType.UNPACKER:
         machine.outputBuffer = '';
@@ -114,7 +127,7 @@ export function startSimulation(state: GameState): void {
         break;
       case MachineType.DELAY:
         machine.delayQueue = [];
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         break;
       case MachineType.LINEFEED:
         machine.clock.reset();
@@ -124,15 +137,15 @@ export function startSimulation(state: GameState): void {
         machine.outputBuffer = '';
         break;
       case MachineType.ROUTER:
-        machine.matchBuffer = '';
-        machine.elseBuffer = '';
+        machine.matchQueue = [];
+        machine.elseQueue = [];
         break;
       case MachineType.GATE:
         machine.gateOpen = false;
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         break;
       case MachineType.WIRELESS:
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         machine.wifiArc = 0;
         break;
       case MachineType.REPLACE:
@@ -140,26 +153,26 @@ export function startSimulation(state: GameState): void {
         machine.outputBuffer = '';
         break;
       case MachineType.SPLITTER:
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         machine.toggle = 0;
         break;
       case MachineType.SEVENSEG:
         machine.lastByte = -1;
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         break;
       case MachineType.DRUM:
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         break;
       case MachineType.CLOCK:
         machine.clock.reset();
         break;
       case MachineType.LATCH:
         machine.latchStored = '';
-        machine.outputBuffer = '';
+        machine.outputQueue = [];
         break;
       // TONE - silence on start
       case MachineType.TONE:
-        emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform });
+        emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform, dutyCycle: machine.dutyCycle });
         break;
       case MachineType.SPEAK:
         machine.accumulatedBuffer = '';
@@ -175,24 +188,60 @@ export function startSimulation(state: GameState): void {
         machine.clock.reset();
         machine.gapTimer.timeRemaining = 0;
         break;
+      case MachineType.PUNCHCARD:
+        machine.cardPos = 0;
+        machine.clock.reset();
+        machine.gapTimer.timeRemaining = 0;
+        break;
       // SINK, NULL - no runtime state to reset
     }
   }
+}
+
+/** Create a ShellInstance for a command machine (async, non-blocking) */
+function initCommandShell(machine: CommandMachine): void {
+  const machineId = `m_${machine.x}_${machine.y}`;
+  machine.processing = true;
+
+  vm.createShell(machine.cwd)
+    .then(shell => {
+      machine.shell = shell;
+      machine.processing = false;
+      log.info(`Shell ready for ${machineId}`);
+
+      // Non-stream machines get a MarkerShell wrapper
+      if (!machine.stream) {
+        markerShells.set(machine, new MarkerShell(shell));
+      }
+
+      // If stream mode with autoStart, write the command immediately
+      if (machine.stream && machine.autoStart) {
+        machine.autoStartRan = true;
+        shell.write(`stdbuf -o0 ${machine.command}\n`);
+        emitGameEvent('commandStart', { machineId, command: machine.command, input: '', stream: true });
+      }
+    })
+    .catch(e => {
+      log.error(`Failed to create shell for ${machineId}:`, e);
+      machine.processing = false;
+      emitGameEvent('vmStatusChange', { status: 'error' });
+    });
 }
 
 export function stopSimulation(state: GameState): void {
   state.running = false;
   state.orphanedPackets = [];
 
-  // Stop active FIFO streams, silence tones, cancel speech
+  // Stop active shells, silence tones, cancel speech
   for (const machine of machines) {
-    if (machine.type === MachineType.COMMAND && machine.stream && machine.activeJobId) {
-      vm.stopStream(machine.activeJobId);
-      machine.activeJobId = '';
+    if (machine.type === MachineType.COMMAND && machine.shell) {
+      machine.shell.stop();
+      machine.shell = null;
       machine.processing = false;
+      markerShells.delete(machine);
     }
     if (machine.type === MachineType.TONE) {
-      emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform });
+      emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform, dutyCycle: machine.dutyCycle });
     }
   }
   emitGameEvent('speakCancel');
@@ -273,159 +322,107 @@ function findFlipperOutputs(
   return outputs;
 }
 
-/** Non-blocking: start a file-based job for a command machine */
-function startCommandJob(
-  machine: CommandMachine,
-  input: string,
-): void {
-  if (!vm.isReady()) return;
+// ---------------------------------------------------------------------------
+// Command machine input processing
+// ---------------------------------------------------------------------------
+
+/** Write pending input to a command machine's shell */
+function processCommandInput(machine: CommandMachine): void {
+  if (!machine.shell || machine.processing) return;
 
   const machineId = `m_${machine.x}_${machine.y}`;
-  const startTime = now;
+
+  // Stream mode: start command on first input, then write raw
+  if (machine.stream) {
+    if (!machine.autoStartRan) {
+      machine.autoStartRan = true;
+      machine.shell.write(`stdbuf -o0 ${machine.command}\n`);
+      emitGameEvent('commandStart', { machineId, command: machine.command, input: '', stream: true });
+    }
+    if (machine.pendingInput.length > 0) {
+      const bytes = machine.pendingInput.length;
+      machine.shell.write(machine.pendingInput);
+      machine.bytesIn += bytes;
+      emitGameEvent('streamWrite', { machineId, bytes });
+      machine.pendingInput = '';
+    }
+    return;
+  }
+
+  const ms = markerShells.get(machine);
+  if (!ms) return;
+
+  // AutoStart commands run without input
+  if (machine.autoStart && !machine.autoStartRan) {
+    machine.autoStartRan = true;
+    ms.execBare(machine.command);
+    machine.processing = true;
+    emitGameEvent('vmStatusChange', { status: 'busy' });
+    emitGameEvent('commandStart', { machineId, command: machine.command, input: '', inputMode: machine.inputMode });
+    return;
+  }
+
+  if (machine.pendingInput.length === 0) return;
+
+  // Non-stream: process when we have a complete line
+  const newlineIdx = machine.pendingInput.indexOf('\n');
+  if (newlineIdx === -1) return;
+
+  const line = machine.pendingInput.substring(0, newlineIdx + 1);
+  machine.pendingInput = machine.pendingInput.substring(newlineIdx + 1);
+  const input = line.replace(/\n$/, '');
+
+  ms.exec(machine.command, input, machine.inputMode);
+  machine.bytesIn += input.length;
   machine.processing = true;
   emitGameEvent('vmStatusChange', { status: 'busy' });
   emitGameEvent('commandStart', { machineId, command: machine.command, input, inputMode: machine.inputMode });
-
-  // Build the effective command - in args mode, append input as argument
-  let effectiveCmd = machine.command;
-  let effectiveStdin = input;
-  if (machine.inputMode === 'args' && input && input.length > 0) {
-    const arg = input.replace(/\n$/, '');
-    effectiveCmd = `${machine.command} ${arg}`;
-    effectiveStdin = '';
-  }
-
-  // Use file-based I/O if machine is async and 9p is available, otherwise serial
-  if (machine.stream && vm.isFs9pReady()) {
-    vm.startJob(machineId, effectiveCmd, effectiveStdin || undefined)
-      .then(jobId => {
-        machine.activeJobId = jobId;
-        machine.bytesRead = 0;
-        machine.lastPollTime = performance.now();
-        // Store startTime for pollCommandJob to use
-        (machine as any)._cmdStartTime = startTime;
-        console.log(`[CMD] Started job ${jobId} for ${machineId}`);
-      })
-      .catch(e => {
-        console.error('[CMD] Failed to start job:', e);
-        machine.processing = false;
-        emitGameEvent('vmStatusChange', { status: 'error' });
-        emitGameEvent('commandComplete', {
-          machineId, command: machine.command, output: String(e), durationMs: performance.now() - startTime, error: true,
-        });
-      });
-  } else {
-    // Serial fallback: blocking exec via serial markers
-    const execPromise = effectiveStdin && effectiveStdin.length > 0
-      ? vm.pipeInShell(machineId, effectiveStdin, effectiveCmd, { forceSerial: !machine.stream })
-      : vm.execInShell(machineId, effectiveCmd, { forceSerial: !machine.stream });
-
-    execPromise.then(result => {
-      if (result.cwd) machine.cwd = result.cwd;
-      const output = result.output || '';
-      if (output && output !== '(timeout)' && output !== '(error)') {
-        machine.outputBuffer += output;
-        if (!output.endsWith('\n')) {
-          machine.outputBuffer += '\n';
-        }
-      }
-      machine.lastCommandTime = performance.now();
-      machine.processing = false;
-      emitGameEvent('vmStatusChange', { status: 'ready' });
-      emitGameEvent('commandComplete', {
-        machineId, command: machine.command, output, durationMs: performance.now() - startTime, error: false,
-      });
-    }).catch(e => {
-      console.error('[CMD] Legacy exec error:', e);
-      machine.processing = false;
-      emitGameEvent('vmStatusChange', { status: 'error' });
-      emitGameEvent('commandComplete', {
-        machineId, command: machine.command, output: String(e), durationMs: performance.now() - startTime, error: true,
-      });
-    });
-  }
 }
 
-/** Non-blocking: poll a running file-based job for new output */
-function pollCommandJob(
-  machine: CommandMachine,
-): void {
-  if (!machine.activeJobId) return;
+/** Poll a command machine's shell for output */
+function pollCommandOutput(machine: CommandMachine): void {
+  if (!machine.shell) return;
 
   // Throttle polls to ~100ms
   if (now - machine.lastPollTime < 100) return;
   machine.lastPollTime = now;
 
   const machineId = `m_${machine.x}_${machine.y}`;
-  const cmdStartTime: number = (machine as any)._cmdStartTime || now;
 
-  vm.pollJob(machine.activeJobId).then(result => {
-    if (result.newOutput) {
-      machine.outputBuffer += result.newOutput;
-      machine.bytesRead += result.newOutput.length;
-    }
-    if (result.done) {
-      if (result.cwd) machine.cwd = result.cwd;
+  if (machine.stream) {
+    // Stream mode: output flows continuously, no markers
+    machine.shell.read().then(output => {
+      if (!output) return;
+      machine.outputBuffer += output;
+      machine.bytesOut += output.length;
       machine.lastCommandTime = performance.now();
-      // Ensure output ends with newline
-      if (machine.outputBuffer.length > 0 && !machine.outputBuffer.endsWith('\n')) {
-        machine.outputBuffer += '\n';
-      }
-      // Cleanup
-      const jobId = machine.activeJobId;
-      machine.activeJobId = '';
-      machine.processing = false;
-      emitGameEvent('vmStatusChange', { status: 'ready' });
-      vm.cleanupJob(jobId);
-      console.log(`[CMD] Job ${jobId} completed`);
-      emitGameEvent('commandComplete', {
-        machineId, command: machine.command, output: machine.outputBuffer, durationMs: performance.now() - cmdStartTime, error: false, stream: machine.stream,
-      });
+    }).catch(e => {
+      log.error('Poll error:', e);
+    });
+    return;
+  }
+
+  // Non-stream: delegate to MarkerShell
+  const ms = markerShells.get(machine);
+  if (!ms) return;
+
+  ms.poll().then(result => {
+    if (result === null) return;
+
+    if (result.length > 0) {
+      machine.outputBuffer += result;
+      machine.bytesOut += result.length;
     }
-  }).catch(e => {
-    console.error('[CMD] Poll error:', e);
+
+    machine.processing = false;
+    machine.lastCommandTime = performance.now();
+    emitGameEvent('vmStatusChange', { status: 'ready' });
     emitGameEvent('commandComplete', {
-      machineId, command: machine.command, output: String(e), durationMs: performance.now() - cmdStartTime, error: true, stream: machine.stream,
+      machineId, command: machine.command, output: machine.outputBuffer, durationMs: performance.now() - ms.lastExecTime, error: false,
     });
+  }).catch(e => {
+    log.error('Poll error:', e);
   });
-}
-
-/** Start a persistent FIFO-based stream for a stream-mode command machine */
-function startStreamJob(
-  machine: CommandMachine,
-): void {
-  if (!vm.isReady() || !vm.isFs9pReady()) return;
-
-  const machineId = `m_${machine.x}_${machine.y}`;
-  machine.processing = true;
-  if (machine.autoStart) machine.autoStartRan = true;
-  emitGameEvent('vmStatusChange', { status: 'busy' });
-  emitGameEvent('commandStart', { machineId, command: machine.command, input: '', stream: true });
-
-  vm.startStream(machineId, machine.command)
-    .then(jobId => {
-      machine.activeJobId = jobId;
-      machine.bytesRead = 0;
-      machine.lastPollTime = performance.now();
-      machine.processing = false;
-      (machine as any)._cmdStartTime = performance.now();
-      console.log(`[CMD] Started stream ${jobId} for ${machineId}`);
-
-      // Flush any pending input that arrived while starting
-      if (machine.pendingInput.length > 0) {
-        const len = machine.pendingInput.length;
-        machine.streamBytesWritten += len;
-        machine.lastStreamWriteTime = performance.now();
-        emitGameEvent('streamWrite', { machineId, bytes: len });
-        vm.writeToStream(jobId, machine.pendingInput);
-        machine.pendingInput = '';
-      }
-    })
-    .catch(e => {
-      console.error('[CMD] Failed to start stream:', e);
-      machine.processing = false;
-      emitGameEvent('vmStatusChange', { status: 'error' });
-    });
 }
 
 function applyMathOp(op: MathOp, value: number, operand: number): number {
@@ -469,7 +466,6 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
     machine.pendingInput += content;
     machine.lastInputTime = now;
     if (machine.stream) {
-      machine.streamBytesWritten += content.length;
       emitGameEvent('streamWrite', { machineId: `m_${machine.x}_${machine.y}`, bytes: content.length });
     } else {
       emitGameEvent('machineReceive', { char: content });
@@ -478,7 +474,7 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
   // NULL machines silently discard packets
   // DUPLICATOR machines buffer input for replication to all outputs
   else if (machine.type === MachineType.DUPLICATOR) {
-    machine.outputBuffer += content;
+    machine.outputQueue.push(content);
   }
   // FLIPPER machines queue input packets and rotate clockwise on each receive
   else if (machine.type === MachineType.FLIPPER) {
@@ -495,12 +491,13 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
       }
     }
     machine.outputQueue.push(content);
+    emitGameEvent('flipperRotate');
   }
   // FILTER: pass or block a specific byte
   else if (machine.type === MachineType.FILTER) {
     const match = content === machine.filterByte;
     if ((machine.filterMode === 'pass' && match) || (machine.filterMode === 'block' && !match)) {
-      machine.outputBuffer += content;
+      machine.outputQueue.push(content);
     }
   }
   // COUNTER: increment count, emit digits on trigger
@@ -534,25 +531,28 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
   // ROUTER: route by match byte
   else if (machine.type === MachineType.ROUTER) {
     if (content === machine.routerByte) {
-      machine.matchBuffer += content;
+      machine.matchQueue.push(content);
     } else {
-      machine.elseBuffer += content;
+      machine.elseQueue.push(content);
     }
   }
   // GATE: dual-input conditional pass
   else if (machine.type === MachineType.GATE) {
     if (fromDir !== undefined && fromDir === machine.gateControlDir) {
       machine.gateOpen = true;
+      emitGameEvent('gateOpen');
     } else if (fromDir !== undefined && fromDir === machine.gateDataDir) {
       if (machine.gateOpen) {
-        machine.outputBuffer += content;
+        machine.outputQueue.push(content);
         machine.gateOpen = false;
+        emitGameEvent('gatePass');
       }
     } else {
       // No direction info - treat as data
       if (machine.gateOpen) {
-        machine.outputBuffer += content;
+        machine.outputQueue.push(content);
         machine.gateOpen = false;
+        emitGameEvent('gatePass');
       }
     }
   }
@@ -562,11 +562,12 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
     machine.wifiArc = (machine.wifiArc + 1) % 4;
     for (const other of machines) {
       if (other.type === MachineType.WIRELESS && other !== machine && other.wirelessChannel === machine.wirelessChannel) {
-        other.outputBuffer += content;
+        other.outputQueue.push(content);
         other.lastCommandTime = now;
         other.wifiArc = (other.wifiArc + 1) % 4;
       }
     }
+    emitGameEvent('wirelessSend');
   }
   // REPLACE: byte substitution
   else if (machine.type === MachineType.REPLACE) {
@@ -585,36 +586,46 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
   else if (machine.type === MachineType.LATCH) {
     if (fromDir !== undefined && fromDir === machine.latchControlDir) {
       if (machine.latchStored) {
-        machine.outputBuffer += machine.latchStored;
+        machine.outputQueue.push(machine.latchStored);
+        emitGameEvent('latchRelease');
       }
     } else if (fromDir !== undefined && fromDir === machine.latchDataDir) {
       machine.latchStored = content;
+      emitGameEvent('latchStore');
     } else {
       // No direction info - treat as data
       machine.latchStored = content;
+      emitGameEvent('latchStore');
     }
   }
 
   // SPLITTER: buffer input for alternating dual-output
   else if (machine.type === MachineType.SPLITTER) {
-    machine.outputBuffer += content;
+    machine.outputQueue.push(content);
   }
   // SEVENSEG: passthrough display
   else if (machine.type === MachineType.SEVENSEG) {
     machine.lastByte = content.charCodeAt(0);
-    machine.outputBuffer += content;
+    machine.outputQueue.push(content);
     machine.lastCommandTime = now;
   }
-  // DRUM: play sound based on byte mod 4, pass through
+  // DRUM: play sound based on byte, pass through
   else if (machine.type === MachineType.DRUM) {
-    machine.outputBuffer += content;
+    machine.outputQueue.push(content);
     machine.lastCommandTime = now;
-    emitGameEvent('drumHit', { sample: content.charCodeAt(0) % 4 });
+    const byte = content.charCodeAt(0);
+    if (machine.bitmask) {
+      for (let i = 0; i < 4; i++) {
+        if (byte & (1 << i)) emitGameEvent('drumHit', { sample: i });
+      }
+    } else {
+      emitGameEvent('drumHit', { sample: byte % 4 });
+    }
   }
   // TONE: continuous oscillator, consumes byte (terminal)
   else if (machine.type === MachineType.TONE) {
     machine.lastCommandTime = now;
-    emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: content.charCodeAt(0), waveform: machine.waveform });
+    emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: content.charCodeAt(0), waveform: machine.waveform, dutyCycle: machine.dutyCycle });
   }
   // SPEAK: accumulate bytes, speak on delimiter (terminal)
   else if (machine.type === MachineType.SPEAK) {
@@ -763,30 +774,6 @@ function updatePacket(
   return true;
 }
 
-function processCommandInput(
-  machine: CommandMachine,
-): void {
-  if (machine.processing) return;
-
-  // AutoStart commands run without input
-  if (machine.autoStart && !machine.autoStartRan) {
-    machine.autoStartRan = true;
-    startCommandJob(machine, '');
-    return;
-  }
-
-  if (machine.pendingInput.length === 0) return;
-
-  // Process when we have a complete line
-  const newlineIdx = machine.pendingInput.indexOf('\n');
-  if (newlineIdx === -1) return;
-
-  const line = machine.pendingInput.substring(0, newlineIdx + 1);
-  machine.pendingInput = machine.pendingInput.substring(newlineIdx + 1);
-
-  startCommandJob(machine, line);
-}
-
 function emitFromSplitter(state: GameState, machine: SplitterMachine): boolean {
   const dir = machine.dir;
   const delta = DirDelta[dir];
@@ -812,9 +799,8 @@ function emitFromSplitter(state: GameState, machine: SplitterMachine): boolean {
     if (!canAccept) continue;
     if (!isCellEmpty(state, o.x, o.y)) continue;
 
-    const char = machine.outputBuffer[0];
-    machine.outputBuffer = machine.outputBuffer.slice(1);
-    createPacket(state, o.x, o.y, char, dir);
+    const packet = machine.outputQueue.shift()!;
+    createPacket(state, o.x, o.y, packet, dir);
     machine.toggle = 1 - machine.toggle;
     return true;
   }
@@ -901,6 +887,36 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
     return true;
   }
 
+  if (machine.type === MachineType.PUNCHCARD) {
+    if (machine.cardData.length === 0) return false;
+    if (machine.cardPos >= machine.cardData.length) return false;
+    if (machine.gapTimer.timeRemaining > 0) {
+      machine.gapTimer.advance(dt);
+      if (!machine.gapTimer.shouldTick()) return false;
+      machine.clock.start(-machine.gapTimer.timeRemaining);
+    } else {
+      machine.clock.advance(dt);
+    }
+    if (!machine.clock.shouldTick()) return false;
+    const output = findMachineOutput(machine);
+    if (!output || !isCellEmpty(state, output.x, output.y)) return false;
+    const char = String.fromCharCode(machine.cardData[machine.cardPos]);
+    createPacket(state, output.x, output.y, char, output.dir);
+    const drift = -machine.clock.timeRemaining;
+    machine.cardPos++;
+    if (machine.cardPos >= machine.cardData.length) {
+      if (machine.loop) {
+        machine.cardPos = 0;
+        if (machine.gapTimer.interval > 0) {
+          machine.gapTimer.start(drift);
+          return true;
+        }
+      }
+    }
+    machine.clock.start(drift);
+    return true;
+  }
+
   // --- Buffering machines: emit freely when output is clear ---
 
   const output = findMachineOutput(machine);
@@ -915,16 +931,15 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       return true;
     }
   } else if (machine.type === MachineType.DUPLICATOR) {
-    if (machine.outputBuffer.length > 0) {
+    if (machine.outputQueue.length > 0) {
       const outputs = findFlipperOutputs(machine);
       if (outputs.length === 0) return false;
       for (const o of outputs) {
         if (!isCellEmpty(state, o.x, o.y)) return false;
       }
-      const char = machine.outputBuffer[0];
-      machine.outputBuffer = machine.outputBuffer.slice(1);
+      const packet = machine.outputQueue.shift()!;
       for (const o of outputs) {
-        createPacket(state, o.x, o.y, char, o.dir);
+        createPacket(state, o.x, o.y, packet, o.dir);
       }
       return true;
     }
@@ -941,7 +956,13 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       createPacket(state, nx, ny, packet, dir);
       return true;
     }
-  } else if (machine.type === MachineType.FILTER || machine.type === MachineType.COUNTER || machine.type === MachineType.DELAY || machine.type === MachineType.KEYBOARD || machine.type === MachineType.UNPACKER) {
+  } else if (machine.type === MachineType.FILTER || machine.type === MachineType.DELAY) {
+    if (machine.outputQueue.length > 0) {
+      const packet = machine.outputQueue.shift()!;
+      createPacket(state, output.x, output.y, packet, output.dir);
+      return true;
+    }
+  } else if (machine.type === MachineType.COUNTER || machine.type === MachineType.KEYBOARD || machine.type === MachineType.UNPACKER) {
     if (machine.outputBuffer.length > 0) {
       const char = machine.outputBuffer[0];
       machine.outputBuffer = machine.outputBuffer.slice(1);
@@ -963,34 +984,44 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
     }
   } else if (machine.type === MachineType.ROUTER) {
     let emitted = false;
-    if (machine.matchBuffer.length > 0) {
+    if (machine.matchQueue.length > 0) {
       const dir = machine.routerMatchDir;
       const d = DirDelta[dir];
       const nx = machine.x + d.dx;
       const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type === CellType.BELT && (cell as BeltCell).dir === dir && isCellEmpty(state, nx, ny)) {
-        const char = machine.matchBuffer[0];
-        machine.matchBuffer = machine.matchBuffer.slice(1);
-        createPacket(state, nx, ny, char, dir);
+        const packet = machine.matchQueue.shift()!;
+        createPacket(state, nx, ny, packet, dir);
         emitted = true;
       }
     }
-    if (machine.elseBuffer.length > 0) {
+    if (machine.elseQueue.length > 0) {
       const dir = machine.routerElseDir;
       const d = DirDelta[dir];
       const nx = machine.x + d.dx;
       const ny = machine.y + d.dy;
       const cell = getCell(nx, ny);
       if (cell.type === CellType.BELT && (cell as BeltCell).dir === dir && isCellEmpty(state, nx, ny)) {
-        const char = machine.elseBuffer[0];
-        machine.elseBuffer = machine.elseBuffer.slice(1);
-        createPacket(state, nx, ny, char, dir);
+        const packet = machine.elseQueue.shift()!;
+        createPacket(state, nx, ny, packet, dir);
         emitted = true;
       }
     }
     return emitted;
-  } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.REPLACE || machine.type === MachineType.MATH || machine.type === MachineType.LATCH || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
+  } else if (machine.type === MachineType.LATCH) {
+    if (machine.outputQueue.length > 0) {
+      const packet = machine.outputQueue.shift()!;
+      createPacket(state, output.x, output.y, packet, output.dir);
+      return true;
+    }
+  } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
+    if (machine.outputQueue.length > 0) {
+      const packet = machine.outputQueue.shift()!;
+      createPacket(state, output.x, output.y, packet, output.dir);
+      return true;
+    }
+  } else if (machine.type === MachineType.REPLACE || machine.type === MachineType.MATH) {
     if (machine.outputBuffer.length > 0) {
       const char = machine.outputBuffer[0];
       machine.outputBuffer = machine.outputBuffer.slice(1);
@@ -998,7 +1029,7 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       return true;
     }
   } else if (machine.type === MachineType.SPLITTER) {
-    if (machine.outputBuffer.length > 0) {
+    if (machine.outputQueue.length > 0) {
       return emitFromSplitter(state, machine);
     }
   }
@@ -1016,11 +1047,11 @@ export function updateSimulation(
     emitFromMachine(state, machine);
   }
 
-  // Process delay queues: move ready items to outputBuffer
+  // Process delay queues: move ready items to outputQueue
   for (const machine of machines) {
     if (machine.type === MachineType.DELAY && machine.delayQueue.length > 0) {
       while (machine.delayQueue.length > 0 && now - machine.delayQueue[0].time >= machine.delayMs) {
-        machine.outputBuffer += machine.delayQueue.shift()!.char;
+        machine.outputQueue.push(machine.delayQueue.shift()!.char);
       }
     }
   }
@@ -1028,34 +1059,14 @@ export function updateSimulation(
   // Process command machines and check display timeouts
   for (const machine of machines) {
     if (machine.type === MachineType.COMMAND) {
-      if (machine.stream && vm.isFs9pReady()) {
-        // Stream mode: FIFO-based persistent command
-        if (machine.activeJobId) {
-          // Write any pending input to the FIFO
-          if (machine.pendingInput.length > 0) {
-            const len = machine.pendingInput.length;
-            machine.streamBytesWritten += len;
-            machine.lastStreamWriteTime = now;
-            emitGameEvent('streamWrite', { machineId: `m_${machine.x}_${machine.y}`, bytes: len });
-            vm.writeToStream(machine.activeJobId, machine.pendingInput);
-            machine.pendingInput = '';
-          }
-          // Poll for output
-          pollCommandJob(machine);
-        } else if (!machine.processing) {
-          if ((machine.autoStart && !machine.autoStartRan) || machine.pendingInput.length > 0) {
-            startStreamJob(machine);
-          }
-        }
-      } else {
-        // Non-stream: one-shot job per input line
-        if (machine.activeJobId) {
-          pollCommandJob(machine);
-        } else if (!machine.processing) {
-          if ((machine.autoStart && !machine.autoStartRan) || machine.pendingInput.length > 0) {
-            processCommandInput(machine);
-          }
-        }
+      if (machine.shell) {
+        // Write pending input to the shell
+        processCommandInput(machine);
+        // Poll for output
+        pollCommandOutput(machine);
+      } else if (!machine.processing && vm.isReady() && vm.isFs9pReady()) {
+        // Shell not yet created (e.g. VM became ready after sim started)
+        initCommandShell(machine);
       }
     } else if (machine.type === MachineType.DISPLAY) {
       if (machine.displayBuffer.length > 0 && machine.lastByteTime > 0) {

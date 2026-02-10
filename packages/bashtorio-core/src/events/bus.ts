@@ -29,6 +29,9 @@ export interface GameEventMap {
   focusModeChange: { mode: 'editor' | 'simulationPassthrough' | 'virtualMachine' };
   panHold: { held: boolean };
 
+  // -- index.ts (filesystem prefetch) --
+  fsCacheProgress: { loaded: number; total: number };
+
   // -- toolbar.ts (toolbar UI controls + bt-event-button children) --
   zoomIn: undefined;
   zoomOut: undefined;
@@ -69,8 +72,14 @@ export interface GameEventMap {
   commandComplete: { machineId: string; command: string; output: string; durationMs: number; error: boolean; stream?: boolean };
   streamWrite: { machineId: string; bytes: number };
   pack: { machineId: string; length: number };
+  flipperRotate: undefined;
+  wirelessSend: undefined;
+  gateOpen: undefined;
+  gatePass: undefined;
+  latchStore: undefined;
+  latchRelease: undefined;
   drumHit: { sample: number };
-  toneNote: { machineId: string; byte: number; waveform: OscillatorType };
+  toneNote: { machineId: string; byte: number; waveform: OscillatorType; dutyCycle: number };
   speak: { text: string; rate: number; pitch: number };
   speakCancel: undefined;
 

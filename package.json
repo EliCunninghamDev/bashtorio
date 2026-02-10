@@ -3,7 +3,7 @@
   "private": true,
   "description": "Unix Pipe Factory Game - Factorio meets Bash",
   "scripts": {
-    "dev": "pnpm --filter web dev",
+    "dev": "pnpm --filter bashtorio-core dev & pnpm --filter web dev",
     "prebuild": "node scripts/generate-acknowledgements.js",
     "build": "pnpm --filter bashtorio-core build && pnpm --filter web build",
     "preview": "pnpm --filter web preview",

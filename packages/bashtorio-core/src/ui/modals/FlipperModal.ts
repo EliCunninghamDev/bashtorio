@@ -15,7 +15,7 @@ export class FlipperModal extends BaseModal {
             <span class="machine-panel-title">Flipper</span>
           </div>
           <div class="machine-panel-body">
-            <p class="modal-description">Rotates output direction clockwise on every received byte.</p>
+            <p class="modal-description">Rotates output direction clockwise on every received packet.</p>
             <div class="form-group">
               <label>Initial Direction:</label>
               <div class="flipper-dir-mount"></div>

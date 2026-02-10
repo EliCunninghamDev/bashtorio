@@ -6,6 +6,7 @@ export interface Settings {
   theme: string;
   ambientVolume: number;
   machineVolume: number;
+  toneVolume: number;
   photoTextures: boolean;
 }
 
@@ -15,6 +16,7 @@ const DEFAULTS: Settings = {
   theme: 'midnight',
   ambientVolume: 1,
   machineVolume: 1,
+  toneVolume: 0.5,
   photoTextures: false,
 };
 

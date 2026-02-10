@@ -1,6 +1,8 @@
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/600.css';
-import { mount, type BashtorioInstance } from 'bashtorio-core';
+import { mount, setLogLevel, type BashtorioInstance } from 'bashtorio-core';
+
+if (import.meta.env.DEV) setLogLevel('debug');
 
 declare global {
   interface Window {
@@ -14,7 +16,7 @@ if (app) {
   mount({
     container: app,
     vmAssetsUrl: '/v86',
-    soundsUrl: '/sounds',
+    assets: { soundsUrl: '/sounds', spritesUrl: '/sprites' },
     rootfsManifest: 'alpine-fs.json',
     vmSnapshot: import.meta.env.PUBLIC_STATE_URL || 'alpine-state.bin',
     onBootStatus: (status) => console.log('[Boot]', status),

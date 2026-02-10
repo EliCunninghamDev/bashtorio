@@ -3,7 +3,7 @@ export * from './game/types';
 export * from './game/state';
 
 // ----------- Re-exports: VM -----------
-export { LinuxVM } from './vm';
+export { LinuxVM, V86Bridge, ShellInstance, encodeHex, shellEscape } from './vm';
 export type { VMConfig } from './vm';
 export * as vm from './game/vm';
 
@@ -41,6 +41,8 @@ export * as clock from './game/clock';
 export { clearState, serializeState, deserializeState, downloadSave, uploadSave, saveToBase64, loadFromBase64, loadFromURLParam, setupSaveLoadHandlers, type SaveData } from './util/saveload';
 export { PRESETS, type Preset } from './util/presets';
 export { THEMES, getThemeById, applyUITheme, type ColorTheme } from './util/themes';
+export { createLogger, setLogLevel, getLogLevel, type LogLevel, type Logger } from './util/logger';
+export { initAssets, vmBase, soundsBase, spritesBase, rootfsBase, vmAsset, soundAsset, spriteAsset, rootfsAsset, resolveUrl, type AssetOverrides } from './util/assets';
 
 // ----------- Side-effect Imports (custom element registration) -----------
 import './ui/statsPanel';
@@ -52,6 +54,7 @@ import './ui/components/IngameLogo.ts';
 import './ui/eventButton';
 import './ui/placeableButton';
 import './ui/machinePicker';
+import './ui/fsCacheProgress';
 
 // ----------- Internal Imports: Game -----------
 import { createInitialState, type GameState } from './game/state';
@@ -85,7 +88,12 @@ import type { GameEventMap } from './events/bus';
 // ----------- Internal Imports: Utilities -----------
 import { setupSaveLoadHandlers } from './util/saveload';
 import { loadSettings } from './util/settings';
+import { createLogger } from './util/logger';
+import { initAssets, vmAsset, rootfsBase } from './util/assets';
+import type { AssetOverrides } from './util/assets';
 import acknowledgements from './generated/acknowledgements.json';
+
+const log = createLogger('Mount');
 
 export interface BashtorioConfig {
   container: HTMLElement;
@@ -94,12 +102,15 @@ export interface BashtorioConfig {
   bootIso?: string;
   /** Skips boot when provided */
   vmSnapshot?: string;
+  /** @deprecated Use assets.rootfsBaseUrl instead */
   rootfsBaseUrl?: string;
   /** Enables 9p-root boot mode when set */
   rootfsManifest?: string;
   networkRelayUrl?: string;
-  /** default: vmAssetsUrl + '/sounds' */
+  /** @deprecated Use assets.soundsUrl instead */
   soundsUrl?: string;
+  /** Unified asset URL overrides */
+  assets?: AssetOverrides;
   onBootStatus?: (status: string) => void;
   onReady?: () => void;
   onError?: (error: Error) => void;
@@ -143,17 +154,21 @@ function collectChunks(fsroot: FsEntry[]): string[] {
  * Runs in the background with limited concurrency so it doesn't
  * starve the VM boot of bandwidth.
  */
-async function prefetch9pFiles(vmAssetsUrl: string, rootfsManifest: string, concurrency = 8): Promise<void> {
-  const res = await fetch(`${vmAssetsUrl}/${rootfsManifest}`)
+async function prefetch9pFiles(rootfsManifest: string, concurrency = 8): Promise<void> {
+  const res = await fetch(vmAsset(rootfsManifest))
   const manifest = await res.json()
   const chunks = collectChunks(manifest.fsroot)
-  const baseurl = `${vmAssetsUrl}/alpine-rootfs-flat/`
+  const baseurl = rootfsBase() + '/'
+  const total = chunks.length
+  let loaded = 0
 
   let i = 0
   async function next(): Promise<void> {
     while (i < chunks.length) {
       const url = baseurl + chunks[i++]
       await fetch(url).catch(() => {})
+      loaded++
+      emitGameEvent('fsCacheProgress', { loaded, total })
     }
   }
   await Promise.all(Array.from({ length: concurrency }, () => next()))
@@ -319,7 +334,13 @@ function setupMachinePicker(
 }
 
 export async function mount(config: BashtorioConfig): Promise<BashtorioInstance> {
-  const { container, vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, onBootStatus, onReady, onError } = config;
+  const { container, vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, assets, onBootStatus, onReady, onError } = config;
+
+  initAssets(vmAssetsUrl, {
+    soundsUrl: soundsUrl ?? assets?.soundsUrl,
+    spritesUrl: assets?.spritesUrl,
+    rootfsBaseUrl: rootfsBaseUrl ?? assets?.rootfsBaseUrl,
+  });
 
   container.innerHTML = `
     <div class="bashtorio-root">
@@ -328,7 +349,10 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
           <h1 class="boot-title">ba<span class="boot-sh">sh</span>torio<span class="boot-terminal-cursor">_</span></h1>
           <p class="boot-subtitle">A Unix Pipe Factory Game</p>
           <div class="boot-status">Initializing...</div>
-          <div class="boot-terminal">
+          <div class="boot-progress">
+            <div class="boot-progress-bar"></div>
+          </div>
+          <div class="boot-terminal" style="display:none">
             <div class="screen-container">
               <div style="white-space: pre; font: 14px monospace"></div>
               <canvas style="display: none"></canvas>
@@ -381,10 +405,12 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       <bt-clock-modal></bt-clock-modal>
       <bt-latch-modal></bt-latch-modal>
       <bt-sink-modal></bt-sink-modal>
+      <bt-drum-modal></bt-drum-modal>
       <bt-tone-modal></bt-tone-modal>
       <bt-speak-modal></bt-speak-modal>
       <bt-screen-modal></bt-screen-modal>
       <bt-byte-modal></bt-byte-modal>
+      <bt-punchcard-modal></bt-punchcard-modal>
 
       <!-- Utility Modals (custom elements) -->
       <bt-network-modal></bt-network-modal>
@@ -415,11 +441,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   };
 
   try {
-    // Prefetch 9p filesystem chunks in the background (don't await — runs alongside boot)
-    if (rootfsManifest) {
-      prefetch9pFiles(vmAssetsUrl, rootfsManifest).catch(e => console.warn('[Prefetch] 9p prefetch failed:', e))
-    }
-
     await vm.initVM({
       vmAssetsUrl,
       bootIso,
@@ -434,6 +455,15 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     setStatus('Testing VM...');
     const ok = await vm.testVM();
 
+    // Prefetch remaining 9p chunks AFTER boot + asset preload — doing it
+    // before starves the VM's own on-demand fetches on slow connections
+    if (rootfsManifest) {
+      const preload = (window as unknown as Record<string, unknown>).__preloadReady as Promise<void> | undefined;
+      (preload || Promise.resolve())
+        .then(() => prefetch9pFiles(rootfsManifest))
+        .catch(e => log.warn('9p prefetch failed:', e))
+    }
+
     if (!ok) {
       throw new Error('VM test failed');
     }
@@ -443,7 +473,6 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     const toast = container.querySelector('bt-toast') as Toast;
 
     initSound({
-      assetsUrl: soundsUrl || `${vmAssetsUrl}/sounds`,
       muted: settings.muted,
       ambientVolume: settings.ambientVolume,
       machineVolume: settings.machineVolume,
@@ -453,7 +482,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     connectSpeechEvents();
     loadSounds().then(() => {
       startLoop('editingAmbient');
-    }).catch(e => console.warn('[Sound] Init failed:', e));
+    }).catch(e => log.warn('Sound init failed:', e));
 
     await new Promise(r => setTimeout(r, 500));
 
@@ -586,6 +615,13 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     errorDetail.textContent = msg;
     errorSuggestion.textContent = suggestion;
     retryBtn.addEventListener('click', () => location.reload());
+
+    // Show VM terminal on the error screen for debugging
+    const bootTerminal = container.querySelector('.boot-terminal') as HTMLElement;
+    if (bootTerminal) {
+      bootTerminal.style.display = '';
+      bootError.appendChild(bootTerminal);
+    }
 
     bootContent.style.display = 'none';
     bootError.style.display = '';

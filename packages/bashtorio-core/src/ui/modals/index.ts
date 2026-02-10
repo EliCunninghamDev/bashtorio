@@ -16,10 +16,12 @@ import './MathModal';
 
 import './SourceModal';
 import './CommandModal';
+import './DrumModal';
 import './ToneModal';
 import './SpeakModal';
 import './ScreenModal';
 import './ByteModal';
+import './PunchCardModal';
 import './HelpModal';
 import './ManualModal';
 import './AcknowledgementsModal';
@@ -46,10 +48,12 @@ import type { MathModal } from './MathModal';
 
 import type { SourceModal } from './SourceModal';
 import type { CommandModal } from './CommandModal';
+import type { DrumModal } from './DrumModal';
 import type { ToneModal } from './ToneModal';
 import type { SpeakModal } from './SpeakModal';
 import type { ScreenModal } from './ScreenModal';
 import type { ByteModal } from './ByteModal';
+import type { PunchCardModal } from './PunchCardModal';
 import type { HelpModal } from './HelpModal';
 import type { ManualModal } from './ManualModal';
 import type { AcknowledgementsModal } from './AcknowledgementsModal';
@@ -90,10 +94,12 @@ export function setupModals(
   const mathModal = container.querySelector('bt-math-modal') as MathModal;
   const clockModal = container.querySelector('bt-clock-modal') as ClockModal;
   const latchModal = container.querySelector('bt-latch-modal') as LatchModal;
+  const drumModal = container.querySelector('bt-drum-modal') as DrumModal;
   const toneModal = container.querySelector('bt-tone-modal') as ToneModal;
   const speakModal = container.querySelector('bt-speak-modal') as SpeakModal;
   const screenModal = container.querySelector('bt-screen-modal') as ScreenModal;
   const byteModal = container.querySelector('bt-byte-modal') as ByteModal;
+  const punchCardModal = container.querySelector('bt-punchcard-modal') as PunchCardModal;
   const sinkModal = container.querySelector('bt-sink-modal') as SinkModal;
   const networkModal = container.querySelector('bt-network-modal') as NetworkModal;
   const presetsModal = container.querySelector('bt-presets-modal') as PresetsModal;
@@ -166,6 +172,9 @@ export function setupModals(
       case MachineType.SINK:
         sinkModal.configure(machine);
         break;
+      case MachineType.DRUM:
+        drumModal.configure(machine);
+        break;
       case MachineType.TONE:
         toneModal.configure(machine);
         break;
@@ -177,6 +186,9 @@ export function setupModals(
         break;
       case MachineType.BYTE:
         byteModal.configure(machine);
+        break;
+      case MachineType.PUNCHCARD:
+        punchCardModal.configure(machine);
         break;
     }
   }

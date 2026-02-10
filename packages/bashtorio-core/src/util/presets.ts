@@ -397,10 +397,11 @@ function createFibonacciPreset(): SaveData {
   };
 }
 
-// MML Tone - Korobeiniki (two voices): SOURCE → awk stream → Tone synth
+// MML Tone - Korobeiniki (three voices): lead + bass + drums
 function createMMLTonePreset(): SaveData {
   // One note per line so awk outputs each byte immediately (no burst buffering).
   // Every line is 3 chars (padded with dots) for even timing between voices.
+  // At emitInterval 75ms, each note = 4 chars (3 + newline) × 75ms = 300ms.
   const n3 = (c: string) => `..${c}`;  // octave 3 note (dots are no-ops)
   const n2 = (c: string) => `O2${c}`;  // octave 2 note
   const R = '..R';
@@ -433,6 +434,25 @@ function createMMLTonePreset(): SaveData {
     n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
   ].join('\n') + '\n';
 
+  // Drum pattern — bitmask mode: bit0=kick, bit1=snare, bit2=hat, bit3=tom
+  // 48 beats (6 bars × 8 eighth-notes), emitted at 300ms each to match the note rate.
+  // Beat:  1    &    2    &    3    &    4    &
+  //        K+H  H    S+H  H    K+H  H    S+H  H
+  const K_H = 5;   // kick + hat
+  const H   = 4;   // hat only
+  const S_H = 6;   // snare + hat
+  const T_H = 12;  // tom + hat (fill)
+  const drumBar  = [K_H, H, S_H, H, K_H, H, S_H, H];
+  const drumFill = [K_H, H, S_H, H, K_H, T_H, T_H, T_H];
+  const drumData = [
+    ...drumBar,                   // bar 1
+    ...drumBar,                   // bar 2
+    ...drumFill,                  // bar 3 (fill into B section)
+    ...drumBar,                   // bar 4
+    ...drumFill,                  // bar 5 (fill into reprise)
+    ...drumBar,                   // bar 6
+  ];
+
   // awk: converts MML note names to frequency bytes matching ToneEngine's MIDI 21-108 range.
   // Formula: byte = ((midi - 21) * 254/87) + 1, where midi = (octave+1)*12 + semitone
   const cmd = `awk 'BEGIN{n["C"]=0;n["D"]=2;n["E"]=4;n["F"]=5;n["G"]=7;n["A"]=9;n["B"]=11}{o=3;for(i=1;i<=length;i++){c=substr($0,i,1);if(c=="O"){i++;o=substr($0,i,1)+0}else if(c in n){b=int(((o+1)*12+n[c]-21)*254/87+1.5);if(b<1)b=1;if(b>255)b=255;printf"%c",b}else if(c=="R")printf"%c",0}fflush()}'`;
@@ -440,7 +460,7 @@ function createMMLTonePreset(): SaveData {
   return {
     version: 2,
     cells: [
-      // Melody: SOURCE → belts → COMMAND(awk) → belts → TONE(square)
+      // Melody: SOURCE → belts → COMMAND(awk) → belts → TONE(square 25%)
       { x: 0, y: 0, type: 'machine', machineIdx: 0 },
       { x: 1, y: 0, type: 'belt', dir: 0 },
       { x: 2, y: 0, type: 'belt', dir: 0 },
@@ -456,14 +476,24 @@ function createMMLTonePreset(): SaveData {
       { x: 4, y: 2, type: 'belt', dir: 0 },
       { x: 5, y: 2, type: 'belt', dir: 0 },
       { x: 6, y: 2, type: 'machine', machineIdx: 5 },
+      // Drums: PUNCHCARD → belts → DRUM(bitmask)
+      { x: 0, y: 4, type: 'machine', machineIdx: 6 },
+      { x: 1, y: 4, type: 'belt', dir: 0 },
+      { x: 2, y: 4, type: 'belt', dir: 0 },
+      { x: 3, y: 4, type: 'belt', dir: 0 },
+      { x: 4, y: 4, type: 'belt', dir: 0 },
+      { x: 5, y: 4, type: 'belt', dir: 0 },
+      { x: 6, y: 4, type: 'machine', machineIdx: 7 },
     ],
     machines: [
       { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: melody, loop: true },
-      { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
-      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'sine' },
+      { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: true, sinkId: 0, stream: true },
+      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.25 },
       { x: 0, y: 2, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: bass, loop: true },
-      { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: false, sinkId: 0, stream: true },
-      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'sine' },
+      { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: true, sinkId: 0, stream: true },
+      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
+      { x: 0, y: 4, type: MachineType.PUNCHCARD, command: '', autoStart: false, sinkId: 0, emitInterval: 300, cardData: drumData, loop: true },
+      { x: 6, y: 4, type: MachineType.DRUM, command: '', autoStart: false, sinkId: 0, bitmask: true },
     ],
     sinkIdCounter: 1,
     beltSpeed: 6,
@@ -523,7 +553,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'mml-tone',
     name: 'Korobeiniki Music Box',
-    description: 'Two-voice Korobeiniki — awk parses MML notation into frequency bytes for melody + bass Tone synths',
+    description: 'Three-voice Korobeiniki — square lead, triangle bass, and punch card drum loop with bitmask beats',
     data: createMMLTonePreset(),
   },
 ];

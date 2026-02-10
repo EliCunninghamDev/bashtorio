@@ -55,13 +55,18 @@ export class CommandModal extends BaseModal {
     const streamCheckbox = this.qs<HTMLInputElement>('.cmd-stream');
     const modeGroup = this.qs('.cmd-input-mode');
 
+    const autoStartCheckbox = this.qs<HTMLInputElement>('.cmd-autostart');
+
     streamCheckbox.addEventListener('change', () => {
       const radios = modeGroup.querySelectorAll<HTMLInputElement>('input[type="radio"]');
       if (streamCheckbox.checked) {
         this.qs<HTMLInputElement>('.cmd-input-mode input[value="pipe"]').checked = true;
         radios.forEach(r => r.disabled = true);
+        autoStartCheckbox.checked = true;
+        autoStartCheckbox.disabled = true;
       } else {
         radios.forEach(r => r.disabled = false);
+        autoStartCheckbox.disabled = false;
       }
     });
   }
@@ -70,7 +75,8 @@ export class CommandModal extends BaseModal {
     this.machine = machine;
 
     this.qs<HTMLTextAreaElement>('.cmd-command').value = machine.command;
-    this.qs<HTMLInputElement>('.cmd-autostart').checked = machine.autoStart;
+    this.qs<HTMLInputElement>('.cmd-autostart').checked = machine.stream || machine.autoStart;
+    this.qs<HTMLInputElement>('.cmd-autostart').disabled = machine.stream;
     this.qs<HTMLInputElement>('.cmd-stream').checked = machine.stream;
     this.qs<HTMLInputElement>(`.cmd-input-mode input[value="${machine.inputMode || 'pipe'}"]`).checked = true;
     this.qs('.cmd-input-mode').querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach(r => r.disabled = machine.stream);
@@ -84,8 +90,8 @@ export class CommandModal extends BaseModal {
   protected save() {
     if (this.machine) {
       this.machine.command = this.qs<HTMLTextAreaElement>('.cmd-command').value.trim() || 'cat';
-      this.machine.autoStart = this.qs<HTMLInputElement>('.cmd-autostart').checked;
       this.machine.stream = this.qs<HTMLInputElement>('.cmd-stream').checked;
+      this.machine.autoStart = this.machine.stream || this.qs<HTMLInputElement>('.cmd-autostart').checked;
       this.machine.inputMode = this.qs<HTMLInputElement>('.cmd-stream').checked
         ? 'pipe'
         : (this.qs<HTMLInputElement>('.cmd-input-mode input:checked')?.value || 'pipe') as 'pipe' | 'args';

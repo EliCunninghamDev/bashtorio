@@ -1,4 +1,5 @@
 import type { EmitTimer } from './clock';
+import type { ShellInstance } from '../vm/shell';
 
 // Grid and rendering constants
 export const DEFAULT_GRID_COLS = 32;
@@ -60,6 +61,7 @@ export enum MachineType {
   SPEAK = 'speak',
   SCREEN = 'screen',
   BYTE = 'byte',
+  PUNCHCARD = 'punchcard',
 }
 
 export interface EmptyCell {
@@ -118,11 +120,10 @@ export interface CommandMachine extends MachineBase {
   lastInputTime: number;
   autoStartRan: boolean;
   cwd: string;
-  activeJobId: string;
+  shell: ShellInstance | null;
   lastPollTime: number;
-  bytesRead: number;
-  streamBytesWritten: number;
-  lastStreamWriteTime: number;
+  bytesIn: number;
+  bytesOut: number;
 }
 
 export interface DisplayMachine extends MachineBase {
@@ -151,14 +152,14 @@ export interface FlipperMachine extends MachineBase {
 
 export interface DuplicatorMachine extends MachineBase {
   type: MachineType.DUPLICATOR;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface FilterMachine extends MachineBase {
   type: MachineType.FILTER;
   filterByte: string;
   filterMode: 'pass' | 'block';
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface CounterMachine extends MachineBase {
@@ -172,7 +173,7 @@ export interface DelayMachine extends MachineBase {
   type: MachineType.DELAY;
   delayMs: number;
   delayQueue: { char: string; time: number }[];
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface KeyboardMachine extends MachineBase {
@@ -201,8 +202,8 @@ export interface RouterMachine extends MachineBase {
   routerByte: string;
   routerMatchDir: Direction;
   routerElseDir: Direction;
-  matchBuffer: string;
-  elseBuffer: string;
+  matchQueue: string[];
+  elseQueue: string[];
 }
 
 export interface GateMachine extends MachineBase {
@@ -210,14 +211,14 @@ export interface GateMachine extends MachineBase {
   gateDataDir: Direction;
   gateControlDir: Direction;
   gateOpen: boolean;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface WirelessMachine extends MachineBase {
   type: MachineType.WIRELESS;
   wirelessChannel: number;
   wifiArc: number;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface ReplaceMachine extends MachineBase {
@@ -247,7 +248,7 @@ export interface LatchMachine extends MachineBase {
   latchDataDir: Direction;
   latchControlDir: Direction;
   latchStored: string;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 
@@ -255,23 +256,25 @@ export interface SplitterMachine extends MachineBase {
   type: MachineType.SPLITTER;
   dir: Direction;
   toggle: number;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface SevenSegMachine extends MachineBase {
   type: MachineType.SEVENSEG;
   lastByte: number;
-  outputBuffer: string;
+  outputQueue: string[];
 }
 
 export interface DrumMachine extends MachineBase {
   type: MachineType.DRUM;
-  outputBuffer: string;
+  bitmask: boolean;
+  outputQueue: string[];
 }
 
 export interface ToneMachine extends MachineBase {
   type: MachineType.TONE;
   waveform: OscillatorType;
+  dutyCycle: number;
 }
 
 export interface SpeakMachine extends MachineBase {
@@ -299,6 +302,15 @@ export interface ByteMachine extends MachineBase {
   gapTimer: EmitTimer;
   byteData: Uint8Array;
   bytePos: number;
+}
+
+export interface PunchCardMachine extends MachineBase {
+  type: MachineType.PUNCHCARD;
+  clock: EmitTimer;
+  gapTimer: EmitTimer;
+  cardData: Uint8Array;
+  cardPos: number;
+  loop: boolean;
 }
 
 export type Machine =
@@ -329,7 +341,8 @@ export type Machine =
   | ToneMachine
   | SpeakMachine
   | ScreenMachine
-  | ByteMachine;
+  | ByteMachine
+  | PunchCardMachine;
 
 export interface MachineByType {
   [MachineType.SOURCE]: SourceMachine;
@@ -361,31 +374,39 @@ export interface MachineByType {
   [MachineType.SPEAK]: SpeakMachine;
   [MachineType.SCREEN]: ScreenMachine;
   [MachineType.BYTE]: ByteMachine;
+  [MachineType.PUNCHCARD]: PunchCardMachine;
 }
 
 export type BufferingMachine =
   | CommandMachine
-  | DuplicatorMachine
-  | FilterMachine
   | CounterMachine
-  | DelayMachine
   | KeyboardMachine
   | PackerMachine
   | UnpackerMachine
-  | GateMachine
-  | WirelessMachine
   | ReplaceMachine
-  | MathMachine
-  | LatchMachine
-  | SplitterMachine
-  | SevenSegMachine
-  | DrumMachine;
+  | MathMachine;
 
 export function hasOutputBuffer(m: Machine): m is BufferingMachine {
   return 'outputBuffer' in m;
 }
 
-export type EmittingMachine = SourceMachine | LinefeedMachine | ClockMachine | ByteMachine;
+export type QueueingMachine =
+  | FlipperMachine
+  | LatchMachine
+  | DuplicatorMachine
+  | FilterMachine
+  | DelayMachine
+  | GateMachine
+  | WirelessMachine
+  | SplitterMachine
+  | SevenSegMachine
+  | DrumMachine;
+
+export function hasOutputQueue(m: Machine): m is QueueingMachine {
+  return 'outputQueue' in m;
+}
+
+export type EmittingMachine = SourceMachine | LinefeedMachine | ClockMachine | ByteMachine | PunchCardMachine;
 
 export function hasClock(m: Machine): m is EmittingMachine {
   return 'clock' in m;
@@ -403,7 +424,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte' | 'punchcard';
 
 export interface OrphanedPacket {
 	id: number;

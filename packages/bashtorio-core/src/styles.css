@@ -62,10 +62,13 @@
 .boot-terminal-cursor {
   display: inline-block;
   position: relative;
-  /* Adjust this value until it looks centered with your lowercase letters */
-  bottom: 0.15em; 
-  /* Makes it look more like a block cursor if you want */
-  font-weight: bold; 
+  bottom: 0.15em;
+  font-weight: bold;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0; }
 }
 
 .boot-subtitle {
@@ -80,6 +83,31 @@
   color: #00ff41;
   margin-bottom: 15px;
   font-size: 0.9rem;
+}
+
+.boot-progress {
+  width: 300px;
+  height: 6px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 auto;
+  position: relative;
+}
+
+.boot-progress-bar {
+  height: 100%;
+  position: absolute;
+  background: #00ff41;
+  border-radius: 2px;
+  animation: bar-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes bar-indeterminate {
+  0% { left: -30%; width: 30%; }
+  50% { left: 50%; width: 30%; }
+  100% { left: 100%; width: 30%; }
 }
 
 .boot-terminal {
@@ -1122,6 +1150,45 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Filesystem Cache Progress */
+.fs-cache {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--ui-bg-deep, #0a0a1a);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  transition: opacity 0.6s;
+}
+
+.fs-cache.done {
+  opacity: 0;
+}
+
+.fs-cache-text {
+  color: var(--ui-fg-muted, #888);
+  min-width: 3ch;
+  text-align: right;
+}
+
+.fs-cache-track {
+  width: 60px;
+  height: 6px;
+  background: var(--ui-bg-input, #12121f);
+  border: 1px solid var(--ui-border, #333);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.fs-cache-bar {
+  height: 100%;
+  width: 0;
+  background: var(--ui-accent, #00d9ff);
+  border-radius: 2px;
+  transition: width 0.2s ease-out;
 }
 
 /* Machine Picker Popup — reuses .popout-column / .placeable-btn from toolbar */
@@ -2362,4 +2429,136 @@ textarea.cmd-command {
 	gap: 4px;
 }
 
+/* ----------- BitInput (IBM Punch Card) ----------- */
 
+.bit-input {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	font-family: monospace;
+	font-size: 12px;
+	max-height: 340px;
+	overflow-y: auto;
+	background: #f5f0d0;
+	border: 2px solid #c4b67a;
+	border-radius: 3px;
+	padding: 8px 10px 6px;
+	box-shadow:
+		inset 0 0 12px rgba(160,140,80,0.15),
+		0 2px 8px rgba(0,0,0,0.3);
+	background-image:
+		repeating-linear-gradient(
+			90deg,
+			transparent,
+			transparent 23px,
+			rgba(180,160,100,0.12) 23px,
+			rgba(180,160,100,0.12) 24px
+		);
+}
+
+.bit-input-header {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	color: #6b6240;
+	padding: 0 0 3px;
+	font-size: 8px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	border-bottom: 1px solid #c4b67a;
+	margin-bottom: 2px;
+}
+
+.bit-input-header span {
+	width: 22px;
+	text-align: center;
+	flex-shrink: 0;
+}
+
+.bit-input-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px 0;
+	border-bottom: 1px solid rgba(180,160,100,0.2);
+}
+
+.bit-input-row:hover {
+	background: rgba(180,160,100,0.12);
+}
+
+.bit-input-row input[type="checkbox"] {
+	appearance: none;
+	width: 18px;
+	height: 10px;
+	margin: 0 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+	background: #ede8c8;
+	border: 1px solid #c4b67a;
+	border-radius: 1px;
+	box-shadow: inset 0 1px 2px rgba(120,100,50,0.2);
+	transition: background 0.08s, border-color 0.08s, box-shadow 0.08s;
+}
+
+.bit-input-row input[type="checkbox"]:hover {
+	background: #e8e0b0;
+	border-color: #a89860;
+	box-shadow: inset 0 1px 2px rgba(120,100,50,0.3);
+}
+
+.bit-input-row input[type="checkbox"]:checked {
+	background: #1a1a18;
+	border-color: #3a3520;
+	box-shadow: inset 0 0 2px 1px rgba(0,0,0,0.6);
+}
+
+.bit-input-row input[type="checkbox"]:active {
+	transform: scale(0.9);
+}
+
+.bit-input-rownum {
+	width: 22px;
+	text-align: right;
+	color: #8a7e58;
+	font-size: 9px;
+	font-weight: 600;
+	flex-shrink: 0;
+	padding-right: 2px;
+}
+
+.bit-input-value {
+	min-width: 32px;
+	text-align: right;
+	color: #4a4430;
+	margin-left: 6px;
+	flex-shrink: 0;
+	font-size: 11px;
+	font-weight: 700;
+}
+
+.bit-input-controls {
+	display: flex;
+	gap: 4px;
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px solid #c4b67a;
+}
+
+.bit-input-controls button {
+	padding: 3px 12px;
+	font-size: 13px;
+	font-weight: 700;
+	cursor: pointer;
+	background: #e8e0b8;
+	color: #4a4430;
+	border: 1px solid #b8a870;
+	border-radius: 2px;
+	transition: background 0.1s, border-color 0.1s;
+}
+
+.bit-input-controls button:hover {
+	background: #ddd5a8;
+	border-color: #a89860;
+}

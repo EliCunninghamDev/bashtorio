@@ -16,7 +16,7 @@ export class LatchModal extends BaseModal {
             <span class="machine-panel-title">Latch</span>
           </div>
           <div class="machine-panel-body">
-            <p class="modal-description">Stores the last data byte received. Emits stored byte when a control signal arrives.</p>
+            <p class="modal-description">Stores the last data packet received. Emits stored packet when a control signal arrives.</p>
             <div class="form-row">
               <div class="form-group">
                 <label>Data comes FROM:</label>

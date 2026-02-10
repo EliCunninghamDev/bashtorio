@@ -16,7 +16,7 @@ export class GateModal extends BaseModal {
             <span class="machine-panel-title">Gate</span>
           </div>
           <div class="machine-panel-body">
-            <p class="modal-description">Data passes through only when a control signal opens the gate. Gate closes after one byte passes.</p>
+            <p class="modal-description">Data passes through only when a control signal opens the gate. Gate closes after one packet passes.</p>
             <div class="form-row">
               <div class="form-group">
                 <label>Data comes FROM:</label>
