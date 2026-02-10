@@ -2299,9 +2299,9 @@ export class Renderer {
       if (line.startsWith('$')) {
         ctx.fillStyle = CLR_TOOLTIP_CMD;
       } else if (line.startsWith('>')) {
-        ctx.fillStyle = CLR_TOOLTIP_INPUT;
-      } else if (line.startsWith('<')) {
         ctx.fillStyle = CLR_TOOLTIP_OUTPUT;
+      } else if (line.startsWith('<')) {
+        ctx.fillStyle = CLR_TOOLTIP_INPUT;
       } else {
         ctx.fillStyle = CLR_TOOLTIP_BORDER;  // muted (cwd)
       }
