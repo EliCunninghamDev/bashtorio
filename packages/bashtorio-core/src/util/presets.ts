@@ -50,7 +50,7 @@ function createSamplePreset(): SaveData {
   const machines: any[] = [];
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n', loop: false, emitInterval: 200 });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello Bashtorio!\nThis game is a ripoff of Factorio!\nBashtorio rocks!\n', loop: false, emitInterval: 200 });
 
   // Belt from source to command
   for (let x = 2; x <= 4; x++) {
@@ -59,7 +59,7 @@ function createSamplePreset(): SaveData {
 
   // grep command at (5, 3)
   placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
-    command: 'grep hello',
+    command: 'grep -i bashtorio',
   });
 
   // Belt from command to sink
@@ -504,8 +504,8 @@ function createMMLTonePreset(): SaveData {
 export const PRESETS: Preset[] = [
   {
     id: 'sample',
-    name: 'Sample',
-    description: 'Source → grep → sink: filters lines matching "hello"',
+    name: 'Hello Bashtorio!',
+    description: 'Source → grep → sink: filters lines matching "bashtorio"',
     data: createSamplePreset(),
   },
   {

@@ -7,7 +7,7 @@ export class FsCacheProgress extends HTMLElement {
   connectedCallback() {
     this.className = 'fs-cache';
     this.style.display = 'none';
-    this.innerHTML = '<span class="fs-cache-text">0%</span><div class="fs-cache-track"><div class="fs-cache-bar"></div></div>';
+    this.innerHTML = '<span class="fs-cache-label">Filesystem Cache:</span> <span class="fs-cache-text">0%</span><div class="fs-cache-track"><div class="fs-cache-bar"></div></div>';
     this.bar = this.querySelector('.fs-cache-bar') as HTMLElement;
     this.text = this.querySelector('.fs-cache-text') as HTMLElement;
 

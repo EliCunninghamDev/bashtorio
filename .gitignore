@@ -36,5 +36,8 @@ pnpm-debug.log*
 .idea/
 .vscode/
 
+# Wrangler
+.wrangler/
+
 # Turbo
 .turbo/

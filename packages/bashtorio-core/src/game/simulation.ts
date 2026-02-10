@@ -231,12 +231,8 @@ function initCommandShell(machine: CommandMachine): void {
         markerShells.set(machine, new MarkerShell(shell));
       }
 
-      // If stream mode with autoStart, write the command immediately
-      if (machine.stream && machine.autoStart) {
-        machine.autoStartRan = true;
-        shell.write(`stdbuf -o0 ${machine.command}\n`);
-        emitGameEvent('commandStart', { machineId, command: machine.command, input: '', stream: true });
-      }
+      // AutoStart is handled by processCommandInput on the next tick,
+      // giving the guest shell time to set up its FIFO before we write.
     })
     .catch(e => {
       log.error(`Failed to create shell for ${machineId}:`, e);
@@ -251,10 +247,17 @@ export function stopSimulation(state: GameState): void {
 
   // Stop active shells, silence tones, cancel speech
   for (const machine of machines) {
-    if (machine.type === MachineType.COMMAND && machine.shell) {
-      machine.shell.stop();
+    if (machine.type === MachineType.COMMAND) {
+      if (machine.shell) machine.shell.stop();
       machine.shell = null;
+      machine.pendingInput = '';
+      machine.outputBuffer = '';
       machine.processing = false;
+      machine.lastInputTime = 0;
+      machine.autoStartRan = false;
+      machine.pollPending = false;
+      machine.bytesIn = 0;
+      machine.bytesOut = 0;
       markerShells.delete(machine);
     }
     if (machine.type === MachineType.TONE) {

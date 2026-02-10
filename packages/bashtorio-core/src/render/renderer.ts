@@ -1530,24 +1530,25 @@ export class Renderer {
 
   private drawBufferDots(px: number, py: number, machine: CommandMachine): void {
     const ctx = this.ctx;
-    const centerX = px + HALF_GRID;
 
-    // Input bytes (white, top)
-    if (machine.bytesIn > 0) {
+    // Pending input preview (white, top) — last 9 chars, left-aligned
+    if (machine.pendingInput.length > 0) {
+      const preview = machine.pendingInput.slice(-9).replace(/\n/g, '↵');
       ctx.font = FONT_PACKET_TINY;
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#fff';
-      ctx.fillText(formatBytes(machine.bytesIn), centerX, py + DOT_Y_INSET);
+      ctx.fillText(preview, px + 5, py + DOT_Y_INSET);
     }
 
-    // Output bytes (amber, bottom)
-    if (machine.bytesOut > 0) {
+    // Output buffer preview (amber, bottom) — first 9 chars reversed, right-aligned
+    if (machine.outputBuffer.length > 0) {
+      const preview = machine.outputBuffer.slice(0, 9).split('').reverse().join('').replace(/\n/g, '↵');
       ctx.font = FONT_PACKET_TINY;
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = CLR_INPUT_AMBER;
-      ctx.fillText(formatBytes(machine.bytesOut), centerX, py + GRID_SIZE - DOT_Y_INSET);
+      ctx.fillText(preview, px + GRID_SIZE - 5, py + GRID_SIZE - DOT_Y_INSET);
     }
   }
 

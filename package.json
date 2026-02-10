@@ -12,7 +12,7 @@
     "build:state": "node scripts/alpine/build-state.js",
     "build:v86": "bash scripts/build-v86.sh",
     "build:all": "pnpm setup && pnpm build:v86 && pnpm build:rootfs && pnpm build:state && pnpm build",
-    "deploy": "pnpm build && pnpm --filter web deploy"
+    "pages-deploy": "pnpm build && pnpm --filter web pages-deploy"
   },
   "keywords": ["game", "unix", "pipes", "linux", "v86", "emulator"],
   "license": "MIT"
