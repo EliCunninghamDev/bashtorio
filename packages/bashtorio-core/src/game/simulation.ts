@@ -44,9 +44,10 @@ export function setupSimulationEvents(state: GameState, settings: Settings): voi
     }
   });
 
-  onGameEvent('startSimulation', () => {
+  onGameEvent('startSimulation', async () => {
     if (!state.running) {
-      startSimulation(state);
+      emitGameEvent('modeChange', { mode: 'select' });
+      await startSimulation(state);
       emitGameEvent('simulationStarted');
     }
   });
@@ -70,14 +71,20 @@ export function setupSimulationEvents(state: GameState, settings: Settings): voi
   });
 
   onGameEvent('machineInteract', ({ machine }) => {
-    if (machine.type === MachineType.BUTTON) {
-      machine.outputQueue.push(machine.buttonByte);
-      machine.lastCommandTime = performance.now();
+    if (!state.running) return;
+    switch (machine.type) {
+      case MachineType.BUTTON:
+        machine.outputQueue.push(machine.buttonByte);
+        machine.lastCommandTime = performance.now();
+        break;
+      case MachineType.KEYBOARD:
+        emitGameEvent('requestKeyboardFocus');
+        break;
     }
   });
 }
 
-export function startSimulation(state: GameState): void {
+export async function startSimulation(state: GameState): Promise<void> {
   if (state.running) return;
 
   state.running = true;
@@ -107,10 +114,6 @@ export function startSimulation(state: GameState): void {
         machine.bytesIn = 0;
         machine.bytesOut = 0;
         markerShells.delete(machine);
-        // Create shell asynchronously
-        if (vm.isReady() && vm.isFs9pReady()) {
-          initCommandShell(machine);
-        }
         break;
       case MachineType.DISPLAY:
         machine.displayBuffer = '';
@@ -213,32 +216,44 @@ export function startSimulation(state: GameState): void {
       // SINK, NULL - no runtime state to reset
     }
   }
+
+  // Pre-create shells for autoStart commands before the sim loop ticks
+  await createAllAutostartShells();
 }
 
-/** Create a ShellInstance for a command machine (async, non-blocking) */
-function initCommandShell(machine: CommandMachine): void {
+/** Create a ShellInstance for a command machine */
+async function initCommandShell(machine: CommandMachine): Promise<void> {
   const machineId = `m_${machine.x}_${machine.y}`;
   machine.processing = true;
 
-  vm.createShell(machine.cwd)
-    .then(shell => {
-      machine.shell = shell;
-      machine.processing = false;
-      log.info(`Shell ready for ${machineId}`);
+  try {
+    const shell = await vm.createShell(machine.cwd);
+    machine.shell = shell;
+    machine.processing = false;
+    log.info(`Shell ready for ${machineId}`);
 
-      // Non-stream machines get a MarkerShell wrapper
-      if (!machine.stream) {
-        markerShells.set(machine, new MarkerShell(shell));
-      }
+    // Non-stream machines get a MarkerShell wrapper
+    if (!machine.stream) {
+      markerShells.set(machine, new MarkerShell(shell));
+    }
+  } catch (e) {
+    log.error(`Failed to create shell for ${machineId}:`, e);
+    machine.processing = false;
+    emitGameEvent('vmStatusChange', { status: 'error' });
+  }
+}
 
-      // AutoStart is handled by processCommandInput on the next tick,
-      // giving the guest shell time to set up its FIFO before we write.
-    })
-    .catch(e => {
-      log.error(`Failed to create shell for ${machineId}:`, e);
-      machine.processing = false;
-      emitGameEvent('vmStatusChange', { status: 'error' });
-    });
+/** Pre-create shells for all autoStart command machines so they're ready before the sim ticks */
+async function createAllAutostartShells(): Promise<void> {
+  if (!vm.isReady() || !vm.isFs9pReady()) return;
+
+  const promises: Promise<void>[] = [];
+  for (const machine of machines) {
+    if (machine.type === MachineType.COMMAND && machine.autoStart) {
+      promises.push(initCommandShell(machine));
+    }
+  }
+  await Promise.all(promises);
 }
 
 export function stopSimulation(state: GameState): void {
@@ -267,19 +282,19 @@ export function stopSimulation(state: GameState): void {
   emitGameEvent('speakCancel');
 }
 
-export function toggleSimulation(state: GameState): void {
+export async function toggleSimulation(state: GameState): Promise<void> {
   if (state.running) {
     stopSimulation(state);
     emitGameEvent('simulationEnded');
   } else {
-    startSimulation(state);
+    await startSimulation(state);
     emitGameEvent('simulationStarted');
   }
 }
 
-export function startSim(state: GameState): void {
+export async function startSim(state: GameState): Promise<void> {
   if (!state.running) {
-    startSimulation(state);
+    await startSimulation(state);
     emitGameEvent('simulationStarted');
   }
 }

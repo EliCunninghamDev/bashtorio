@@ -212,12 +212,19 @@ export class Toolbar {
       this.dirArrow.style.transform = `rotate(${this.dirRotation}deg)`;
     });
 
+    onGameEvent('startSimulation', () => {
+      this.runBtn.disabled = true;
+      this.runBtn.textContent = '⏳ Starting...';
+    });
+
     onGameEvent('simulationStarted', () => {
+      this.runBtn.textContent = '▶ Run';
       this.runBtn.disabled = true;
       this.stopBtn.disabled = false;
     });
 
     onGameEvent('simulationEnded', () => {
+      this.runBtn.textContent = '▶ Run';
       this.runBtn.disabled = false;
       this.stopBtn.disabled = true;
     });

@@ -1416,9 +1416,15 @@ export class Renderer {
       this.drawDelayDots(px, py, chars);
     }
 
-    // Keyboard: buffer dots
-    if (machine.type === MachineType.KEYBOARD) {
-      this.drawGenericBufferDots(px, py, (machine as KeyboardMachine).outputBuffer.length);
+    // Keyboard: output buffer text preview
+    if (machine.type === MachineType.KEYBOARD && (machine as KeyboardMachine).outputBuffer.length > 0) {
+      const buf = (machine as KeyboardMachine).outputBuffer;
+      const preview = buf.slice(0, 9).split('').reverse().join('').replace(/\n/g, '↵');
+      this.ctx.font = FONT_PACKET_TINY;
+      this.ctx.textAlign = 'right';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillStyle = CLR_INPUT_AMBER;
+      this.ctx.fillText(preview, px + GRID_SIZE - 5, py + GRID_SIZE - DOT_Y_INSET);
     }
 
     // Unpacker: buffer dots
