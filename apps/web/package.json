@@ -6,7 +6,7 @@
     "dev": "astro dev",
     "build": "astro build && node scripts/inject-bundle-size.mjs",
     "preview": "astro preview",
-    "deploy": "rm -f dist/v86/alpine-state.bin && wrangler pages deploy"
+    "deploy": "rm -f dist/v86/*-state.bin dist/v86/*-state.bin.br && node scripts/upload-state-r2.mjs && wrangler pages deploy"
   },
   "dependencies": {
     "astro": "^4.0.0",

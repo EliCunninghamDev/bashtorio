@@ -70,6 +70,7 @@ export interface GameEventMap {
   sinkOutput: { sink: SinkMachine; content: string };
   commandStart: { machineId: string; command: string; input: string; inputMode?: 'pipe' | 'args'; stream?: boolean };
   commandComplete: { machineId: string; command: string; output: string; durationMs: number; error: boolean; stream?: boolean };
+  commandError: { machineId: string; command: string; stderr: string };
   streamWrite: { machineId: string; bytes: number };
   pack: { machineId: string; length: number };
   flipperRotate: undefined;
@@ -89,6 +90,7 @@ export interface GameEventMap {
   requestLoadURL: undefined;
 
   // -- editor.ts --
+  machineInteract: { machine: Machine };
   editFailed: { message: string };
 
   // -- modals --

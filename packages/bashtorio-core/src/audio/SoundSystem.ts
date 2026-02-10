@@ -257,14 +257,14 @@ export function connectSoundEvents(settings?: Settings): void {
   });
   unsubscribers.push(drumUnsub);
 
-  const streamWriteUnsub = onGameEvent('streamWrite', () => {
-    const now = performance.now();
-    const last = lastPlayTime.get('streamWrite') ?? 0;
-    if (now - last < KEYPRESS_MIN_INTERVAL) return;
-    lastPlayTime.set('streamWrite', now);
-    play('streamWrite', { randomPitch: 0.2 });
-  });
-  unsubscribers.push(streamWriteUnsub);
+  // const streamWriteUnsub = onGameEvent('streamWrite', () => {
+  //   const now = performance.now();
+  //   const last = lastPlayTime.get('streamWrite') ?? 0;
+  //   if (now - last < KEYPRESS_MIN_INTERVAL) return;
+  //   lastPlayTime.set('streamWrite', now);
+  //   play('streamWrite', { randomPitch: 0.2 });
+  // });
+  // unsubscribers.push(streamWriteUnsub);
 
   for (const [event, mappings] of Object.entries(LOOP_MAP) as [GameEvent, ({ startLoop?: SoundName; stopLoop?: SoundName })[]][]) {
     const unsub = onGameEvent(event, () => {

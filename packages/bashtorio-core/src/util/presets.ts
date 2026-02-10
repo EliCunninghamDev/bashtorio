@@ -50,7 +50,7 @@ function createSamplePreset(): SaveData {
   const machines: any[] = [];
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\ngoodbye world\nhello again\n', loop: false, emitInterval: 200 });
 
   // Belt from source to command
   for (let x = 2; x <= 4; x++) {
@@ -89,7 +89,7 @@ function createRot13Preset(): SaveData {
   const rot13 = "tr 'A-Za-z' 'N-ZA-Mn-za-m'";
 
   // Source at (1, 3)
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\nROT13 twice returns the original text.\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\nROT13 twice returns the original text.\n', loop: false, emitInterval: 200 });
 
   // Belt from source to encode
   for (let x = 2; x <= 3; x++) {
@@ -137,7 +137,7 @@ function createUppercasePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\nthis text will be uppercase\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\nthis text will be uppercase\n', loop: false, emitInterval: 200 });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -169,7 +169,7 @@ function createWordReverserPreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World\nreverse me\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World\nreverse me\n', loop: false, emitInterval: 200 });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -201,7 +201,7 @@ function createPipelinePreset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\npipeline demo\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hello world\npipeline demo\n', loop: false, emitInterval: 200 });
 
   for (let x = 2; x <= 3; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -241,7 +241,7 @@ function createBase64Preset(): SaveData {
   const grid = emptyGrid(cols, rows);
   const machines: any[] = [];
 
-  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\n', loop: false });
+  placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'Hello World!\n', loop: false, emitInterval: 200 });
 
   for (let x = 2; x <= 4; x++) {
     placeBelt(grid, x, 3, Direction.RIGHT);
@@ -275,7 +275,7 @@ function createDuplicatorDemoPreset(): SaveData {
 	const machines: any[] = [];
 
 	// Source at (1, 3) - feeds alternating-case text
-	placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n', loop: false });
+	placeMachine(grid, machines, 1, 3, MachineType.SOURCE, { sourceText: 'hElLo WoRlD\ntHiS iS bAsHtOrIo\n', loop: false, emitInterval: 200 });
 
 	// Belt from source to duplicator
 	for (let x = 2; x <= 4; x++) {
@@ -384,7 +384,7 @@ function createFibonacciPreset(): SaveData {
     machines: [
       { x: 0, y: -17, type: MachineType.COMMAND, command: "awk '{print $2, $1+$2}'", autoStart: false, sinkId: 0, stream: false },
       { x: -3, y: -17, type: MachineType.DUPLICATOR, command: '', autoStart: false, sinkId: 0 },
-      { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 500, sourceText: '0 1\n', loop: false },
+      { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 200, sourceText: '0 1\n', loop: false },
       { x: -3, y: -19, type: MachineType.REPLACE, command: '', autoStart: false, sinkId: 0, replaceFrom: ' ', replaceTo: '\n' },
       { x: -3, y: -21, type: MachineType.PACKER, command: '', autoStart: false, sinkId: 0, packerDelimiter: '\n', preserveDelimiter: true, packerDir: 3 },
       { x: -3, y: -23, type: MachineType.FLIPPER, command: '', autoStart: false, sinkId: 0, flipperDir: 3 },

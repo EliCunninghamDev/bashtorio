@@ -11,7 +11,7 @@ export interface V86Config {
   hda?: { url: string };
   autostart: boolean;
   network_relay_url?: string;
-  initial_state?: { url: string };
+  initial_state?: { url: string } | { buffer: ArrayBuffer };
   filesystem?: { baseurl: string; basefs?: string } | Record<string, never>;
   bzimage_initrd_from_filesystem?: boolean;
   cmdline?: string;

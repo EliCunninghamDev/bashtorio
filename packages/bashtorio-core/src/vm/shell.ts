@@ -20,6 +20,7 @@ export class ShellInstance {
   readonly id: string;
   private bridge: V86Bridge;
   private bytesRead = 0;
+  private errBytesRead = 0;
   private _started = false;
 
   constructor(bridge: V86Bridge, id?: string) {
@@ -49,20 +50,23 @@ export class ShellInstance {
   async start(initialCwd = '/'): Promise<void> {
     log.debug(`${this.id} starting (cwd: ${initialCwd}, jobPrefix: ${this.bridge.jobPrefix}, guestDir: ${this.bridge.guestJobDir})`);
 
-    // Ensure host-side 9p directory exists and pre-create empty output file
+    // Ensure host-side 9p directory exists and pre-create empty output + error files
     this.bridge.ensure9pDir(this.bridge.jobPrefix);
     await this.bridge.createFile(this.filePath('out'), new Uint8Array(0));
+    await this.bridge.createFile(this.filePath('err'), new Uint8Array(0));
 
     const fifo = this.guestPath('fifo');
     const out = this.guestPath('out');
+    const err = this.guestPath('err');
     const pid = this.guestPath('pid');
-    const cmd = `mkfifo ${fifo}; (cd ${initialCwd} 2>/dev/null || cd /; stdbuf -o0 sh <> ${fifo} > ${out} 2>&1) & echo $! > ${pid}`;
+    const cmd = `mkfifo ${fifo}; (cd ${initialCwd} 2>/dev/null || cd /; stdbuf -o0 sh <> ${fifo} > ${out} 2> ${err}) & echo $! > ${pid}`;
 
     log.debug(`${this.id} sending serial cmd (${cmd.length} chars)`);
     this.bridge.sendSerial(cmd + '\n');
 
     this._started = true;
     this.bytesRead = 0;
+    this.errBytesRead = 0;
     log.info(`${this.id} started (cwd: ${initialCwd})`);
   }
 
@@ -92,6 +96,24 @@ export class ShellInstance {
     return '';
   }
 
+  /** Read new stderr bytes since last read. Non-blocking — returns '' if nothing new. */
+  async readErr(): Promise<string> {
+    if (!this._started) return '';
+    try {
+      const data = await this.bridge.readFile(this.filePath('err'));
+      if (data.byteLength > this.errBytesRead) {
+        const newBytes = data.slice(this.errBytesRead);
+        this.errBytesRead = data.byteLength;
+        const text = new TextDecoder().decode(newBytes);
+        log.debug(`${this.id} readErr() → ${text.length} new chars (total ${data.byteLength}b)`);
+        return text;
+      }
+    } catch (e) {
+      log.debug(`${this.id} readErr() failed: ${e}`);
+    }
+    return '';
+  }
+
   /** Query the shell's current working directory */
   async getCwd(): Promise<string> {
     if (!this._started) return '/';
@@ -117,7 +139,7 @@ export class ShellInstance {
     const id = this.id;
     log.debug(`${this.id} stopping — killing PID and cleaning up`);
     this.bridge.sendSerial(
-      `kill $(cat ${guestDir}/${id}_pid) 2>/dev/null; rm -f ${guestDir}/${id}_fifo ${guestDir}/${id}_out ${guestDir}/${id}_pid ${guestDir}/${id}_cwd\n`
+      `kill $(cat ${guestDir}/${id}_pid) 2>/dev/null; rm -f ${guestDir}/${id}_fifo ${guestDir}/${id}_out ${guestDir}/${id}_err ${guestDir}/${id}_pid ${guestDir}/${id}_cwd\n`
     );
     log.info(`${this.id} stopped`);
   }

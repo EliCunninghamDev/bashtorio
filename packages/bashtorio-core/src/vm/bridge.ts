@@ -5,6 +5,34 @@ import { createLogger } from '../util/logger';
 
 const log = createLogger('VM');
 
+// VM configuration
+const MEMORY_SIZE = 512 * 1024 * 1024;
+const VGA_MEMORY_SIZE = 2 * 1024 * 1024;
+const KERNEL_CMDLINE = 'rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0';
+
+// Timing (ms)
+const BOOT_TIMEOUT = 120_000;
+const SNAPSHOT_SETTLE_DELAY = 1000;
+const NETWORK_DELAY = 2000;
+const LOGIN_SEND_DELAY = 500;
+const SHELL_CONFIG_DELAY = 500;
+const CMD_STEP_DELAY = 100;
+
+// Serial prompts that indicate boot stages
+const LOGIN_PROMPTS = ['Files send via emulator', 'localhost login:'];
+const SHELL_PROMPTS = ['/ #', '~%', '# ', 'localhost:~#'];
+
+// Serial buffer limits
+const SERIAL_BUF_MAX = 50_000;
+const SERIAL_BUF_TRIM = 25_000;
+
+// Guest filesystem paths
+const GUEST_BASE = '/tmp/bashtorio';
+const GUEST_JOBS = `${GUEST_BASE}/jobs`;
+// 9p host-side paths (relative to 9p root, no leading slash)
+const HOST_BASE = 'tmp/bashtorio';
+const HOST_JOBS = `${HOST_BASE}/jobs`;
+
 /**
  * Low-level wrapper around the v86 emulator.
  * Owns the emulator lifecycle, serial I/O, 9p filesystem, and state management.
@@ -13,23 +41,17 @@ export class V86Bridge {
   private emulator: V86Emulator | null = null;
   private _ready = false;
   private _fs9pReady = false;
-  private _fs9pRoot = false;
   private _networkRelay: string | null = null;
 
   get ready(): boolean { return this._ready; }
   get fs9pReady(): boolean { return this._fs9pReady; }
-  get fs9pRoot(): boolean { return this._fs9pRoot; }
   get networkRelay(): string | null { return this._networkRelay; }
 
   /** 9p host-side path prefix for job/shell files */
-  get jobPrefix(): string {
-    return this._fs9pRoot ? 'tmp/bashtorio/jobs' : 'jobs';
-  }
+  get jobPrefix(): string { return HOST_JOBS; }
 
   /** Guest filesystem path for job/shell files */
-  get guestJobDir(): string {
-    return this._fs9pRoot ? '/tmp/bashtorio/jobs' : '/mnt/host/jobs';
-  }
+  get guestJobDir(): string { return GUEST_JOBS; }
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -37,52 +59,62 @@ export class V86Bridge {
 
   async init(config: VMConfig): Promise<void> {
     const {
-      vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl,
-      rootfsManifest, screenContainer, networkRelayUrl, onStatus = () => {},
+      vmAssetsUrl, vmSnapshot, rootfsBaseUrl,
+      rootfsManifest, screenContainer, networkRelayUrl, preloadBuffers, onStatus = () => {},
     } = config;
 
     onStatus('Creating emulator...');
-    this._fs9pRoot = !!rootfsManifest;
+
+    // Resolve state buffer before creating emulator (needs await)
+    let resolvedStateBuffer: ArrayBuffer | undefined;
+    if (vmSnapshot) {
+      const stateUrl = vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}`;
+      resolvedStateBuffer = preloadBuffers?.[stateUrl];
+      if (!resolvedStateBuffer) {
+        log.warn(`Preloaded state buffer not found for "${stateUrl}", keys: [${preloadBuffers ? Object.keys(preloadBuffers).join(', ') : 'none'}]`);
+        const brUrl = `${stateUrl}.br`;
+        try {
+          onStatus('Downloading compressed state...');
+          const res = await fetch(brUrl);
+          if (res.ok && res.body) {
+            onStatus('Decompressing state...');
+            const decompressed = res.body.pipeThrough(new DecompressionStream('br' as CompressionFormat));
+            resolvedStateBuffer = await new Response(decompressed).arrayBuffer();
+            log.info(`Fetched and decompressed state from ${brUrl} (${(resolvedStateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
+          }
+        } catch (e) {
+          log.warn(`Failed to fetch/decompress ${brUrl}:`, e);
+        }
+      }
+    }
 
     return new Promise((resolve, reject) => {
-      const memorySize = 512 * 1024 * 1024;
-
-      let v86Config: V86Config;
-
-      if (rootfsManifest) {
-        v86Config = {
-          wasm_path: `${vmAssetsUrl}/v86.wasm`,
-          memory_size: memorySize,
-          vga_memory_size: 2 * 1024 * 1024,
-          screen_container: screenContainer,
-          bios: { url: `${vmAssetsUrl}/seabios.bin` },
-          vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
-          autostart: true,
-          filesystem: {
-            basefs: `${vmAssetsUrl}/${rootfsManifest}`,
-            baseurl: rootfsBaseUrl || `${vmAssetsUrl}/alpine-rootfs-flat/`,
-          },
-          bzimage_initrd_from_filesystem: true,
-          cmdline: 'rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0',
-        };
-      } else {
-        v86Config = {
-          wasm_path: `${vmAssetsUrl}/v86.wasm`,
-          memory_size: memorySize,
-          vga_memory_size: 2 * 1024 * 1024,
-          screen_container: screenContainer,
-          bios: { url: `${vmAssetsUrl}/seabios.bin` },
-          vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
-          cdrom: { url: `${vmAssetsUrl}/${bootIso}` },
-          autostart: true,
-          filesystem: rootfsBaseUrl ? { baseurl: rootfsBaseUrl } : {},
-        };
-      }
+      const v86Config: V86Config = {
+        wasm_path: `${vmAssetsUrl}/v86.wasm`,
+        memory_size: MEMORY_SIZE,
+        vga_memory_size: VGA_MEMORY_SIZE,
+        screen_container: screenContainer,
+        bios: { url: `${vmAssetsUrl}/seabios.bin` },
+        vga_bios: { url: `${vmAssetsUrl}/vgabios.bin` },
+        autostart: true,
+        filesystem: {
+          basefs: `${vmAssetsUrl}/${rootfsManifest}`,
+          baseurl: rootfsBaseUrl || `${vmAssetsUrl}/alpine-rootfs-flat/`,
+        },
+        bzimage_initrd_from_filesystem: true,
+        cmdline: KERNEL_CMDLINE,
+      };
 
       if (vmSnapshot) {
-        v86Config.initial_state = { url: vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}` };
-        delete v86Config.cdrom;
-        onStatus('Loading pre-booted state...');
+        const stateUrl = vmSnapshot.startsWith('http') ? vmSnapshot : `${vmAssetsUrl}/${vmSnapshot}`;
+        if (resolvedStateBuffer) {
+          v86Config.initial_state = { buffer: resolvedStateBuffer };
+          log.info(`Using state buffer (${(resolvedStateBuffer.byteLength / 1048576).toFixed(1)} MB)`);
+        } else {
+          v86Config.initial_state = { url: stateUrl };
+          log.warn(`Falling back to direct URL fetch: ${stateUrl}`);
+        }
+        onStatus('Restoring state...');
       }
 
       if (networkRelayUrl) {
@@ -100,7 +132,7 @@ export class V86Bridge {
             if (this._networkRelay) {
               onStatus('Configuring network...');
               this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-              await this.sleep(2000);
+              await this.sleep(NETWORK_DELAY);
             }
             this._ready = true;
             onStatus('State loaded, ready!');
@@ -109,7 +141,7 @@ export class V86Bridge {
           } catch (err) {
             reject(err);
           }
-        }, 1000);
+        }, SNAPSHOT_SETTLE_DELAY);
       }
 
       let booted = !!vmSnapshot;
@@ -119,31 +151,31 @@ export class V86Bridge {
       this.emulator.add_listener('serial0-output-byte', (byte: number) => {
         const char = String.fromCharCode(byte);
         buffer += char;
-        if (buffer.length > 50000) buffer = buffer.slice(-25000);
+        if (buffer.length > SERIAL_BUF_MAX) buffer = buffer.slice(-SERIAL_BUF_TRIM);
 
         if (!booted) {
-          if (!sentEnter && (buffer.includes('Files send via emulator') || buffer.includes('localhost login:'))) {
+          if (!sentEnter && LOGIN_PROMPTS.some(p => buffer.includes(p))) {
             sentEnter = true;
             onStatus('Starting shell...');
-            setTimeout(() => this.emulator!.serial0_send('\n'), 500);
+            setTimeout(() => this.emulator!.serial0_send('\n'), LOGIN_SEND_DELAY);
           }
 
-          if (sentEnter && (buffer.includes('/ #') || buffer.includes('~%') || buffer.includes('# ') || buffer.includes('localhost:~#'))) {
+          if (sentEnter && SHELL_PROMPTS.some(p => buffer.includes(p))) {
             booted = true;
             onStatus('Configuring...');
             setTimeout(async () => {
               try {
                 this.emulator!.serial0_send('stty -echo\n');
-                await this.sleep(100);
+                await this.sleep(CMD_STEP_DELAY);
                 this.emulator!.serial0_send('PS1=""\n');
-                await this.sleep(100);
-                this.emulator!.serial0_send('mkdir -p /tmp/bashtorio\n');
-                await this.sleep(100);
+                await this.sleep(CMD_STEP_DELAY);
+                this.emulator!.serial0_send(`mkdir -p ${GUEST_BASE}\n`);
+                await this.sleep(CMD_STEP_DELAY);
 
                 if (this._networkRelay) {
                   onStatus('Configuring network...');
                   this.emulator!.serial0_send('[ -e /sys/class/net/eth0 ] && udhcpc -i eth0 2>/dev/null &\n');
-                  await this.sleep(2000);
+                  await this.sleep(NETWORK_DELAY);
                 }
 
                 this._ready = true;
@@ -152,14 +184,14 @@ export class V86Bridge {
               } catch (err) {
                 reject(err);
               }
-            }, 500);
+            }, SHELL_CONFIG_DELAY);
           }
         }
       });
 
       setTimeout(() => {
         if (!booted) reject(new Error('Boot timeout'));
-      }, 120000);
+      }, BOOT_TIMEOUT);
     });
   }
 
@@ -170,7 +202,6 @@ export class V86Bridge {
     }
     this._ready = false;
     this._fs9pReady = false;
-    this._fs9pRoot = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -278,34 +309,19 @@ export class V86Bridge {
     if (!this.emulator) return;
 
     const marker = `__9p_ok_${Date.now()}__`;
-    this.debug9pTree();
 
-    if (this._fs9pRoot) {
-      log.info('Setting up 9p-root job directory...');
-      onStatus('Setting up 9p job directory...');
-      this.ensure9pDir('tmp/bashtorio/jobs');
-      const ready = this.waitForSerial(marker);
-      this.emulator.serial0_send(`mkdir -p /tmp/bashtorio/jobs && echo ${marker}\n`);
-      await ready;
-      this.debug9pTree();
-      this._fs9pReady = true;
-      log.info('9p-root filesystem ready');
-      onStatus('Ready!');
-    } else {
-      log.info('Mounting legacy 9p filesystem...');
-      onStatus('Mounting 9p filesystem...');
-      const ready = this.waitForSerial(marker);
-      this.emulator.serial0_send(`mkdir -p /mnt/host && mount -t 9p -o trans=virtio,version=9p2000.L host9p /mnt/host 2>/dev/null; mkdir -p /mnt/host/jobs && printf '1' > /mnt/host/jobs/.ready && echo ${marker}\n`);
-      await ready;
-      const data = await this.emulator.read_file('jobs/.ready');
-      if (data[0] !== 49) throw new Error('9p: verification mismatch');
-      this._fs9pReady = true;
-      log.info('9p filesystem ready');
-      onStatus('Ready!');
-    }
+    log.info('Setting up 9p job directory...');
+    onStatus('Setting up 9p job directory...');
+    this.ensure9pDir(HOST_JOBS);
+    const ready = this.waitForSerial(marker);
+    this.emulator.serial0_send(`mkdir -p ${GUEST_JOBS} && echo ${marker}\n`);
+    await ready;
+    this._fs9pReady = true;
+    log.info('9p filesystem ready');
+    onStatus('Ready!');
   }
 
-  private debug9pTree(): void {
+  debug9pTree(level = 6): void {
     const fs = this.emulator?.fs9p;
     if (!fs) { log.debug('9p: no filesystem'); return; }
 
@@ -313,7 +329,7 @@ export class V86Bridge {
     const lines: string[] = [];
 
     const walk = (id: number, prefix: string, depth: number) => {
-      if (depth > 6) return;
+      if (depth > level) return;
       const inode = fs.inodes[id];
       if (!inode || !inode.direntries) return;
       for (const [name, childId] of inode.direntries) {

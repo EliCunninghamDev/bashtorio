@@ -98,14 +98,12 @@ const log = createLogger('Mount');
 export interface BashtorioConfig {
   container: HTMLElement;
   vmAssetsUrl: string;
-  /** default: linux4.iso */
-  bootIso?: string;
   /** Skips boot when provided */
   vmSnapshot?: string;
   /** @deprecated Use assets.rootfsBaseUrl instead */
   rootfsBaseUrl?: string;
-  /** Enables 9p-root boot mode when set */
-  rootfsManifest?: string;
+  /** 9p rootfs JSON manifest filename */
+  rootfsManifest: string;
   networkRelayUrl?: string;
   /** @deprecated Use assets.soundsUrl instead */
   soundsUrl?: string;
@@ -334,13 +332,18 @@ function setupMachinePicker(
 }
 
 export async function mount(config: BashtorioConfig): Promise<BashtorioInstance> {
-  const { container, vmAssetsUrl, bootIso = 'linux4.iso', vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, assets, onBootStatus, onReady, onError } = config;
+  const { container, vmAssetsUrl, vmSnapshot, rootfsBaseUrl, rootfsManifest, networkRelayUrl, soundsUrl, assets, onBootStatus, onReady, onError } = config;
 
   initAssets(vmAssetsUrl, {
     soundsUrl: soundsUrl ?? assets?.soundsUrl,
     spritesUrl: assets?.spritesUrl,
     rootfsBaseUrl: rootfsBaseUrl ?? assets?.rootfsBaseUrl,
   });
+
+  // Wait for asset preload (progress bar) to finish before replacing the loader DOM
+  const preload = (window as unknown as Record<string, unknown>).__preloadReady as Promise<void> | undefined;
+  if (preload) await preload;
+  const preloadBuffers = (window as unknown as Record<string, unknown>).__preloadBuffers as Record<string, ArrayBuffer> | undefined;
 
   container.innerHTML = `
     <div class="bashtorio-root">
@@ -411,6 +414,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       <bt-screen-modal></bt-screen-modal>
       <bt-byte-modal></bt-byte-modal>
       <bt-punchcard-modal></bt-punchcard-modal>
+      <bt-button-modal></bt-button-modal>
 
       <!-- Utility Modals (custom elements) -->
       <bt-network-modal></bt-network-modal>
@@ -443,25 +447,21 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
   try {
     await vm.initVM({
       vmAssetsUrl,
-      bootIso,
       vmSnapshot,
       rootfsBaseUrl,
       rootfsManifest,
       screenContainer,
       networkRelayUrl,
+      preloadBuffers,
       onStatus: setStatus,
     });
 
     setStatus('Testing VM...');
     const ok = await vm.testVM();
 
-    // Prefetch remaining 9p chunks AFTER boot + asset preload — doing it
-    // before starves the VM's own on-demand fetches on slow connections
+    // Prefetch remaining 9p chunks AFTER boot (preload already awaited above)
     if (rootfsManifest) {
-      const preload = (window as unknown as Record<string, unknown>).__preloadReady as Promise<void> | undefined;
-      (preload || Promise.resolve())
-        .then(() => prefetch9pFiles(rootfsManifest))
-        .catch(e => log.warn('9p prefetch failed:', e))
+      prefetch9pFiles(rootfsManifest).catch(e => log.warn('9p prefetch failed:', e))
     }
 
     if (!ok) {

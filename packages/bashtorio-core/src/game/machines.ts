@@ -32,7 +32,7 @@ export function commandDefaults(): MachineDefaults<MachineType.COMMAND> {
   return {
     command: 'cat', autoStart: false, stream: false, inputMode: 'pipe',
     pendingInput: '', outputBuffer: '', processing: false, lastInputTime: 0,
-    autoStartRan: false, cwd: '/', shell: null, lastPollTime: 0, bytesIn: 0, bytesOut: 0,
+    autoStartRan: false, cwd: '/', shell: null, pollPending: false, bytesIn: 0, bytesOut: 0,
   };
 }
 
@@ -137,6 +137,14 @@ export function punchCardDefaults(): MachineDefaults<MachineType.PUNCHCARD> {
   return { cardData: new Uint8Array(0), cardPos: 0, clock: new EmitTimer(500), gapTimer: new EmitTimer(0), loop: false };
 }
 
+export function tntDefaults(): MachineDefaults<MachineType.TNT> {
+  return { packetCount: 0, stored: [], exploded: false };
+}
+
+export function buttonDefaults(): MachineDefaults<MachineType.BUTTON> {
+  return { buttonByte: '1', buttonChannel: 0, outputQueue: [] };
+}
+
 // ---------------------------------------------------------------------------
 // Machine factory
 // ---------------------------------------------------------------------------
@@ -176,5 +184,7 @@ export function createMachine(x: number, y: number, machineType: MachineType, di
     case MachineType.SCREEN:     return { ...base, type: MachineType.SCREEN, ...screenDefaults() };
     case MachineType.BYTE:       return { ...base, type: MachineType.BYTE, ...byteDefaults() };
     case MachineType.PUNCHCARD:  return { ...base, type: MachineType.PUNCHCARD, ...punchCardDefaults() };
+    case MachineType.TNT:        return { ...base, type: MachineType.TNT, ...tntDefaults() };
+    case MachineType.BUTTON:     return { ...base, type: MachineType.BUTTON, ...buttonDefaults() };
   }
 }

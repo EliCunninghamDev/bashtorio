@@ -37,6 +37,8 @@ const PLACEABLE_TO_MACHINE: Partial<Record<PlaceableType, MachineType>> = {
     screen: MachineType.SCREEN,
     byte: MachineType.BYTE,
     punchcard: MachineType.PUNCHCARD,
+    tnt: MachineType.TNT,
+    button: MachineType.BUTTON,
 };
 
 /** Machines that open their config modal immediately on placement */
@@ -62,6 +64,7 @@ const CONFIG_ON_PLACE = new Set<MachineType>([
     MachineType.SCREEN,
     MachineType.BYTE,
     MachineType.PUNCHCARD,
+    MachineType.BUTTON,
 ]);
 
 export class Editor {
@@ -168,7 +171,7 @@ export class Editor {
         const machine = (cell as MachineCell).machine;
 
         if (this.state.running) {
-            emitGameEvent('editFailed', { message: 'Stop the simulation to edit machines' });
+            emitGameEvent('machineInteract', { machine });
             return;
         }
 

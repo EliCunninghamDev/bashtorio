@@ -18,7 +18,7 @@ if (app) {
     vmAssetsUrl: '/v86',
     assets: { soundsUrl: '/sounds', spritesUrl: '/sprites' },
     rootfsManifest: 'alpine-fs.json',
-    vmSnapshot: import.meta.env.PUBLIC_STATE_URL || 'alpine-state.bin',
+    vmSnapshot: import.meta.env.PUBLIC_STATE_URL || (import.meta.env.PUBLIC_STATE_FILE || 'alpine-state.bin'),
     onBootStatus: (status) => console.log('[Boot]', status),
     onReady: () => console.log('Game ready!'),
     onError: (err) => console.error('Boot error:', err),

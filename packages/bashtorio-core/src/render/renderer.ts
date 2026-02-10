@@ -31,6 +31,9 @@ import {
   type ToneMachine,
   type ScreenMachine,
   type PunchCardMachine,
+  type ByteMachine,
+  type TntMachine,
+  type ButtonMachine,
   type BeltCell,
   type CursorMode,
   type OrphanedPacket,
@@ -222,6 +225,8 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
   [MachineType.BYTE]:       { bg: '#2a4a3a', border: '#4a8a6a', text: '#88ffcc' },
   [MachineType.PUNCHCARD]:  { bg: '#4a4a2a', border: '#8a8a4a', text: '#ddcc88' },
+  [MachineType.TNT]:        { bg: '#5a2020', border: '#aa4444', text: '#ffaaaa' },
+  [MachineType.BUTTON]:     { bg: '#000000', border: '#ffffff', text: '#ccc' },
 };
 
 const WIRELESS_CHANNEL_COLORS = [
@@ -624,6 +629,12 @@ export class Renderer {
       case 'punchcard':
         this.drawMachineBox(col, row, MachineType.PUNCHCARD, 'CARD');
         break;
+      case 'tnt':
+        this.drawMachineBox(col, row, MachineType.TNT, 'TNT');
+        break;
+      case 'button':
+        this.drawMachineBox(col, row, MachineType.BUTTON, 'BTN');
+        break;
     }
 
     ctx.globalAlpha = 1;
@@ -930,6 +941,54 @@ export class Renderer {
     ctx.fill();
   }
 
+  private drawButton(machine: ButtonMachine): void {
+    const px = gx(machine.x);
+    const py = gy(machine.y);
+    const ctx = this.ctx;
+    const chColor = WIRELESS_CHANNEL_COLORS[machine.buttonChannel];
+    const chPacked = WIRELESS_CHANNEL_PACKED[machine.buttonChannel];
+
+    // Black background + channel-colored border
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+    ctx.strokeStyle = chColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + CELL_INSET, py + CELL_INSET, CELL_INNER, CELL_INNER);
+
+    // Central button circle
+    const mcx = cx(machine.x);
+    const mcy = cy(machine.y);
+    const radius = 14;
+
+    // Flash on press
+    const elapsed = now - machine.lastCommandTime;
+    const flash = machine.lastCommandTime > 0 && elapsed < FLASH_DURATION_MS
+      ? 1 - elapsed / FLASH_DURATION_MS : 0;
+
+    // Outer ring
+    ctx.strokeStyle = chColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(mcx, mcy, radius, 0, TAU);
+    ctx.stroke();
+
+    // Filled inner circle with flash
+    const dim: RGB = rgb(0x1a, 0x1a, 0x1a);
+    const fillColor = rgbCSS(lerpRgb(dim, chPacked, flash));
+    ctx.fillStyle = fillColor;
+    ctx.beginPath();
+    ctx.arc(mcx, mcy, radius - 3, 0, TAU);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#ccc';
+    ctx.font = FONT_LABEL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('BTN', mcx, mcy);
+  }
+
+
   // -------------------------------------------------------------------------
   // Seven-segment display
   // -------------------------------------------------------------------------
@@ -1106,6 +1165,37 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // TNT
+  // -------------------------------------------------------------------------
+
+  private drawTnt(machine: TntMachine): void {
+    const ctx = this.ctx;
+    const color = MACHINE_COLORS[MachineType.TNT];
+    const scale = 1 + 0.3 * (machine.packetCount / 20);
+    const size = CELL_INNER * scale;
+    const centerX = cx(machine.x);
+    const centerY = cy(machine.y);
+    const halfSize = size / 2;
+
+    ctx.fillStyle = color.bg;
+    ctx.fillRect(centerX - halfSize, centerY - halfSize, size, size);
+
+    ctx.strokeStyle = color.border;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(centerX - halfSize, centerY - halfSize, size, size);
+
+    ctx.fillStyle = color.text;
+    ctx.font = FONT_LABEL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('TNT', centerX, centerY - 6);
+
+    // Packet count
+    ctx.font = FONT_PACKET_SMALL;
+    ctx.fillText(`${machine.packetCount}/20`, centerX, centerY + 8);
+  }
+
+  // -------------------------------------------------------------------------
   // Machine (full, with indicators)
   // -------------------------------------------------------------------------
 
@@ -1131,6 +1221,19 @@ export class Renderer {
     // Wireless: custom wifi symbol rendering
     if (machine.type === MachineType.WIRELESS) {
       this.drawWireless(machine as WirelessMachine);
+      return;
+    }
+
+    // TNT: skip drawing when exploded, scale up as it fills
+    if (machine.type === MachineType.TNT) {
+      if (machine.exploded) return;
+      this.drawTnt(machine as TntMachine);
+      return;
+    }
+
+    // Button: colored circle
+    if (machine.type === MachineType.BUTTON) {
+      this.drawButton(machine as ButtonMachine);
       return;
     }
 
@@ -1381,23 +1484,35 @@ export class Renderer {
     // Source: progress arc (fills during gap, drains during release)
     if (machine.type === MachineType.SOURCE) {
       const sm = machine as SourceMachine;
-      if (sm.loop && sm.sourceText.length > 0) {
+      if (sm.sourceText.length > 0) {
         let progress: number;
         if (sm.gapTimer.timeRemaining > 0 && sm.gapTimer.interval > 0) {
-          // Gap phase: arc fills up (0→1)
           progress = clamp(1 - sm.gapTimer.timeRemaining / sm.gapTimer.interval, 0, 1);
         } else {
-          // Release phase: arc drains (1→0) as chars are emitted
           progress = clamp(1 - sm.sourcePos / sm.sourceText.length, 0, 1);
         }
         this.drawTimerArc(machine.x, machine.y, 1, 1 - progress, MACHINE_COLORS[MachineType.SOURCE].border);
       }
     }
 
+    // Byte: progress arc (same pattern as SOURCE, no loop)
+    if (machine.type === MachineType.BYTE) {
+      const bm = machine as ByteMachine;
+      if (bm.byteData.length > 0) {
+        let progress: number;
+        if (bm.gapTimer.timeRemaining > 0 && bm.gapTimer.interval > 0) {
+          progress = clamp(1 - bm.gapTimer.timeRemaining / bm.gapTimer.interval, 0, 1);
+        } else {
+          progress = clamp(1 - bm.bytePos / bm.byteData.length, 0, 1);
+        }
+        this.drawTimerArc(machine.x, machine.y, 1, 1 - progress, MACHINE_COLORS[MachineType.BYTE].border);
+      }
+    }
+
     // PunchCard: progress arc (same pattern as SOURCE)
     if (machine.type === MachineType.PUNCHCARD) {
       const pc = machine as PunchCardMachine;
-      if (pc.loop && pc.cardData.length > 0) {
+      if (pc.cardData.length > 0) {
         let progress: number;
         if (pc.gapTimer.timeRemaining > 0 && pc.gapTimer.interval > 0) {
           progress = clamp(1 - pc.gapTimer.timeRemaining / pc.gapTimer.interval, 0, 1);

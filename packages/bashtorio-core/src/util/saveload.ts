@@ -98,6 +98,11 @@ interface SerializedMachine {
   byteInterval?: number;
   cardData?: number[];
   bitmask?: boolean;
+  tntPacketCount?: number;
+  tntStored?: string[];
+  tntExploded?: boolean;
+  buttonByte?: string;
+  buttonChannel?: number;
 }
 
 const SAVE_VERSION = 2;
@@ -223,6 +228,12 @@ export function serializeState(state: GameState): SaveData {
         if (m.gapTimer.interval > 0) base.gapInterval = m.gapTimer.interval;
         base.loop = m.loop;
         break;
+      case MachineType.TNT:
+        break;
+      case MachineType.BUTTON:
+        base.buttonByte = m.buttonByte;
+        base.buttonChannel = m.buttonChannel;
+        break;
     }
     return base;
   });
@@ -247,6 +258,7 @@ function parseCellType(t: string | number): CellType {
 }
 
 export function clearState(state: GameState): void {
+  emitGameEvent('endSimulation');
   clearGrid();
   clearMachines();
   state.packets = [];
@@ -259,7 +271,6 @@ export function clearState(state: GameState): void {
  */
 export function deserializeState(state: GameState, data: SaveData): void {
   clearState(state);
-  state.running = false;
 
   // Restore machines first (we need them for grid references)
   for (const sm of data.machines) {
@@ -302,7 +313,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
           autoStartRan: false,
           cwd: '/',
           shell: null,
-          lastPollTime: 0,
+          pollPending: false,
           bytesIn: 0,
           bytesOut: 0,
         };
@@ -525,6 +536,24 @@ export function deserializeState(state: GameState, data: SaveData): void {
           clock: new EmitTimer(sm.emitInterval ?? 500),
           gapTimer: new EmitTimer(sm.gapInterval ?? 0),
           loop: sm.loop ?? false,
+        };
+        break;
+      case MachineType.TNT:
+        machine = {
+          ...base,
+          type: MachineType.TNT,
+          packetCount: 0,
+          stored: [],
+          exploded: false,
+        };
+        break;
+      case MachineType.BUTTON:
+        machine = {
+          ...base,
+          type: MachineType.BUTTON,
+          buttonByte: sm.buttonByte ?? '1',
+          buttonChannel: sm.buttonChannel ?? 0,
+          outputQueue: [],
         };
         break;
       default:
@@ -760,7 +789,6 @@ export function setupSaveLoadHandlers(
   });
 
   onGameEvent('saveLoaded', ({ source }) => {
-    if (state.running) state.running = false;
     const messages: Record<string, string> = {
       url: 'Loaded save from URL',
       file: 'Loaded save from file',

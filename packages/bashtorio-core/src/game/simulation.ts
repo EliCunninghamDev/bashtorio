@@ -12,7 +12,9 @@ import {
   type SplitterMachine,
   type MathOp,
   SINK_DRAIN_SLOTS,
+  PACKET_SIZE,
 } from './types';
+import { viewportBounds } from './camera';
 
 import type { GameState } from './state';
 import { getCell } from './grid';
@@ -66,6 +68,13 @@ export function setupSimulationEvents(state: GameState, settings: Settings): voi
     state.beltSpeed = beltSpeed;
     emitGameEvent('beltSpeedChanged', { beltSpeed });
   });
+
+  onGameEvent('machineInteract', ({ machine }) => {
+    if (machine.type === MachineType.BUTTON) {
+      machine.outputQueue.push(machine.buttonByte);
+      machine.lastCommandTime = performance.now();
+    }
+  });
 }
 
 export function startSimulation(state: GameState): void {
@@ -94,7 +103,7 @@ export function startSimulation(state: GameState): void {
         machine.lastInputTime = 0;
         machine.autoStartRan = false;
         machine.shell = null;
-        machine.lastPollTime = 0;
+        machine.pollPending = false;
         machine.bytesIn = 0;
         machine.bytesOut = 0;
         markerShells.delete(machine);
@@ -192,6 +201,14 @@ export function startSimulation(state: GameState): void {
         machine.cardPos = 0;
         machine.clock.reset();
         machine.gapTimer.timeRemaining = 0;
+        break;
+      case MachineType.TNT:
+        machine.packetCount = 0;
+        machine.stored = [];
+        machine.exploded = false;
+        break;
+      case MachineType.BUTTON:
+        machine.outputQueue = [];
         break;
       // SINK, NULL - no runtime state to reset
     }
@@ -383,11 +400,16 @@ function processCommandInput(machine: CommandMachine): void {
 function pollCommandOutput(machine: CommandMachine): void {
   if (!machine.shell) return;
 
-  // Throttle polls to ~100ms
-  if (now - machine.lastPollTime < 100) return;
-  machine.lastPollTime = now;
+  if (machine.pollPending) return;
+  machine.pollPending = true;
 
   const machineId = `m_${machine.x}_${machine.y}`;
+
+  const pollStderr = () => {
+    machine.shell!.readErr().then(stderr => {
+      if (stderr) emitGameEvent('commandError', { machineId, command: machine.command, stderr });
+    }).catch(() => {});
+  };
 
   if (machine.stream) {
     // Stream mode: output flows continuously, no markers
@@ -398,13 +420,16 @@ function pollCommandOutput(machine: CommandMachine): void {
       machine.lastCommandTime = performance.now();
     }).catch(e => {
       log.error('Poll error:', e);
+    }).finally(() => {
+      pollStderr();
+      machine.pollPending = false;
     });
     return;
   }
 
   // Non-stream: delegate to MarkerShell
   const ms = markerShells.get(machine);
-  if (!ms) return;
+  if (!ms) { machine.pollPending = false; return; }
 
   ms.poll().then(result => {
     if (result === null) return;
@@ -422,6 +447,9 @@ function pollCommandOutput(machine: CommandMachine): void {
     });
   }).catch(e => {
     log.error('Poll error:', e);
+  }).finally(() => {
+    pollStderr();
+    machine.pollPending = false;
   });
 }
 
@@ -438,7 +466,7 @@ function applyMathOp(op: MathOp, value: number, operand: number): number {
   }
 }
 
-function deliverToMachine(machine: Machine, content: string, fromDir?: Direction): void {
+function deliverToMachine(state: GameState, machine: Machine, content: string, fromDir?: Direction): void {
   if (machine.type === MachineType.SINK) {
     // Push into circular drain-animation ring
     const entry = { char: content, time: now };
@@ -649,6 +677,33 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
       machine.writePos = (machine.writePos + 1) % machine.buffer.length;
     }
   }
+  // TNT: collect packets, explode at 20
+  else if (machine.type === MachineType.TNT) {
+    if (machine.exploded) return;
+    machine.stored.push(content);
+    machine.packetCount++;
+    machine.lastCommandTime = now;
+    if (machine.packetCount >= 20) {
+      machine.exploded = true;
+      const count = machine.stored.length;
+      const speed = state.beltSpeed * 3;
+      const centerX = machine.x * GRID_SIZE + GRID_SIZE / 2;
+      const centerY = machine.y * GRID_SIZE + GRID_SIZE / 2;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        state.orphanedPackets.push({
+          id: state.packetId++,
+          worldX: centerX,
+          worldY: centerY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          content: machine.stored[i],
+          age: 0,
+        });
+      }
+      machine.stored = [];
+    }
+  }
   // KEYBOARD: output-only, no-op on receive
 }
 
@@ -656,6 +711,7 @@ function deliverToMachine(machine: Machine, content: string, fromDir?: Direction
 const MAX_PACKET_STEP = GRID_SIZE - 1;
 const ORPHAN_GRAVITY = 0.15;
 const ORPHAN_MAX_AGE = 10000;
+const ORPHAN_BOUNCE = 0.7;   // velocity retained after bounce
 
 function orphanPacket(state: GameState, packet: Packet, cellX: number, cellY: number): void {
 	const worldX = cellX * GRID_SIZE + packet.offsetX;
@@ -675,7 +731,8 @@ function orphanPacket(state: GameState, packet: Packet, cellX: number, cellY: nu
 
 function updateOrphanedPackets(state: GameState, deltaTime: number): void {
 	const timeScale = state.timescale * (deltaTime / 16);
-	const maxY = 100000;  // large enough for any practical grid
+	const bounds = viewportBounds();
+	const margin = PACKET_SIZE / 2;
 
 	for (let i = state.orphanedPackets.length - 1; i >= 0; i--) {
 		const op = state.orphanedPackets[i];
@@ -685,7 +742,23 @@ function updateOrphanedPackets(state: GameState, deltaTime: number): void {
 		op.worldY += op.vy * timeScale;
 		op.age += deltaTime;
 
-		if (op.worldY > maxY || op.age > ORPHAN_MAX_AGE) {
+		// Bounce off viewport edges
+		if (op.worldX < bounds.left + margin) {
+			op.worldX = bounds.left + margin;
+			op.vx = Math.abs(op.vx) * ORPHAN_BOUNCE;
+		} else if (op.worldX > bounds.right - margin) {
+			op.worldX = bounds.right - margin;
+			op.vx = -Math.abs(op.vx) * ORPHAN_BOUNCE;
+		}
+		if (op.worldY < bounds.top + margin) {
+			op.worldY = bounds.top + margin;
+			op.vy = Math.abs(op.vy) * ORPHAN_BOUNCE;
+		} else if (op.worldY > bounds.bottom - margin) {
+			op.worldY = bounds.bottom - margin;
+			op.vy = -Math.abs(op.vy) * ORPHAN_BOUNCE;
+		}
+
+		if (op.age > ORPHAN_MAX_AGE) {
 			state.orphanedPackets.splice(i, 1);
 		}
 	}
@@ -748,7 +821,7 @@ function updatePacket(
   // Entering a machine
   if (nextCell.type === CellType.MACHINE) {
     const machineCell = nextCell as MachineCell;
-    deliverToMachine(machineCell.machine, packet.content, ((packet.dir + 2) % 4) as Direction);
+    deliverToMachine(state, machineCell.machine, packet.content, ((packet.dir + 2) % 4) as Direction);
     return false;
   }
 
@@ -1015,7 +1088,7 @@ function emitFromMachine(state: GameState, machine: Machine): boolean {
       createPacket(state, output.x, output.y, packet, output.dir);
       return true;
     }
-  } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM) {
+  } else if (machine.type === MachineType.GATE || machine.type === MachineType.WIRELESS || machine.type === MachineType.SEVENSEG || machine.type === MachineType.DRUM || machine.type === MachineType.BUTTON) {
     if (machine.outputQueue.length > 0) {
       const packet = machine.outputQueue.shift()!;
       createPacket(state, output.x, output.y, packet, output.dir);

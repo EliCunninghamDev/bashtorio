@@ -7,18 +7,18 @@ const log = createLogger('VM');
 export interface VMConfig {
 	/** Base URL for v86 assets (wasm, bios, etc.) */
 	vmAssetsUrl: string;
-	/** Bootable Linux ISO filename (default: linux4.iso) */
-	bootIso?: string;
 	/** Pre-booted VM state snapshot file (skips boot when provided) */
 	vmSnapshot?: string;
 	/** Base URL for the 9p rootfs flat directory */
 	rootfsBaseUrl?: string;
-	/** 9p rootfs JSON manifest filename — enables 9p-root boot mode when set */
-	rootfsManifest?: string;
+	/** 9p rootfs JSON manifest filename */
+	rootfsManifest: string;
 	/** Container element for the VGA screen */
 	screenContainer: HTMLElement;
 	/** WebSocket relay URL for VM networking */
 	networkRelayUrl?: string | null;
+	/** Pre-downloaded ArrayBuffers keyed by URL (from preload progress bar) */
+	preloadBuffers?: Record<string, ArrayBuffer>;
 	/** Status callback during boot */
 	onStatus?: (status: string) => void;
 }

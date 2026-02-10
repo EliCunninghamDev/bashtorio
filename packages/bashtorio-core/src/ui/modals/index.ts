@@ -22,6 +22,7 @@ import './SpeakModal';
 import './ScreenModal';
 import './ByteModal';
 import './PunchCardModal';
+import './ButtonModal';
 import './HelpModal';
 import './ManualModal';
 import './AcknowledgementsModal';
@@ -54,6 +55,7 @@ import type { SpeakModal } from './SpeakModal';
 import type { ScreenModal } from './ScreenModal';
 import type { ByteModal } from './ByteModal';
 import type { PunchCardModal } from './PunchCardModal';
+import type { ButtonModal } from './ButtonModal';
 import type { HelpModal } from './HelpModal';
 import type { ManualModal } from './ManualModal';
 import type { AcknowledgementsModal } from './AcknowledgementsModal';
@@ -100,6 +102,7 @@ export function setupModals(
   const screenModal = container.querySelector('bt-screen-modal') as ScreenModal;
   const byteModal = container.querySelector('bt-byte-modal') as ByteModal;
   const punchCardModal = container.querySelector('bt-punchcard-modal') as PunchCardModal;
+  const buttonModal = container.querySelector('bt-button-modal') as ButtonModal;
   const sinkModal = container.querySelector('bt-sink-modal') as SinkModal;
   const networkModal = container.querySelector('bt-network-modal') as NetworkModal;
   const presetsModal = container.querySelector('bt-presets-modal') as PresetsModal;
@@ -189,6 +192,9 @@ export function setupModals(
         break;
       case MachineType.PUNCHCARD:
         punchCardModal.configure(machine);
+        break;
+      case MachineType.BUTTON:
+        buttonModal.configure(machine);
         break;
     }
   }

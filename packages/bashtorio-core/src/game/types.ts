@@ -62,6 +62,8 @@ export enum MachineType {
   SCREEN = 'screen',
   BYTE = 'byte',
   PUNCHCARD = 'punchcard',
+  TNT = 'tnt',
+  BUTTON = 'button',
 }
 
 export interface EmptyCell {
@@ -121,7 +123,7 @@ export interface CommandMachine extends MachineBase {
   autoStartRan: boolean;
   cwd: string;
   shell: ShellInstance | null;
-  lastPollTime: number;
+  pollPending: boolean;
   bytesIn: number;
   bytesOut: number;
 }
@@ -313,6 +315,20 @@ export interface PunchCardMachine extends MachineBase {
   loop: boolean;
 }
 
+export interface TntMachine extends MachineBase {
+  type: MachineType.TNT;
+  packetCount: number;
+  stored: string[];
+  exploded: boolean;
+}
+
+export interface ButtonMachine extends MachineBase {
+  type: MachineType.BUTTON;
+  buttonByte: string;
+  buttonChannel: number;
+  outputQueue: string[];
+}
+
 export type Machine =
   | SourceMachine
   | SinkMachine
@@ -342,7 +358,9 @@ export type Machine =
   | SpeakMachine
   | ScreenMachine
   | ByteMachine
-  | PunchCardMachine;
+  | PunchCardMachine
+  | TntMachine
+  | ButtonMachine;
 
 export interface MachineByType {
   [MachineType.SOURCE]: SourceMachine;
@@ -375,6 +393,8 @@ export interface MachineByType {
   [MachineType.SCREEN]: ScreenMachine;
   [MachineType.BYTE]: ByteMachine;
   [MachineType.PUNCHCARD]: PunchCardMachine;
+  [MachineType.TNT]: TntMachine;
+  [MachineType.BUTTON]: ButtonMachine;
 }
 
 export type BufferingMachine =
@@ -400,7 +420,8 @@ export type QueueingMachine =
   | WirelessMachine
   | SplitterMachine
   | SevenSegMachine
-  | DrumMachine;
+  | DrumMachine
+  | ButtonMachine;
 
 export function hasOutputQueue(m: Machine): m is QueueingMachine {
   return 'outputQueue' in m;
@@ -424,7 +445,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte' | 'punchcard';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte' | 'punchcard' | 'tnt' | 'button';
 
 export interface OrphanedPacket {
 	id: number;
