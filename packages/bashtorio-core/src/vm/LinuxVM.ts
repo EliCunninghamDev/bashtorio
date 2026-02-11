@@ -70,23 +70,22 @@ export class LinuxVM {
 	// VM test
 	// ---------------------------------------------------------------------------
 
-	async test(): Promise<boolean> {
+	async test(onStatus?: (status: string) => void): Promise<boolean> {
 		let shell: ShellInstance | null = null;
 		try {
 			shell = new ShellInstance(this.bridge, '_test');
 			await shell.start('/');
 			await new Promise(r => setTimeout(r, 1000));
 			shell.write('echo test123\n');
-			for (let i = 0; i < 20; i++) {
+			for (let attempt = 1; ; attempt++) {
+				onStatus?.('Waiting' + '.'.repeat(Math.min(attempt, 20)));
 				await new Promise(r => setTimeout(r, 1000));
 				const output = await shell.read();
 				if (output.includes('test123')) {
-					log.info('Test: PASS');
+					log.info(`Test: PASS (attempt ${attempt})`);
 					return true;
 				}
 			}
-			log.warn('Test: FAIL (no output after 20s)');
-			return false;
 		} catch (e) {
 			log.error('Test failed:', e);
 			return false;

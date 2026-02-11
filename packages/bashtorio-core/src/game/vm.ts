@@ -16,9 +16,9 @@ export function destroyVM(): void {
   instance = null;
 }
 
-export async function testVM(): Promise<boolean> {
+export async function testVM(onStatus?: (status: string) => void): Promise<boolean> {
   if (!instance) return false;
-  return instance.test();
+  return instance.test(onStatus);
 }
 
 export async function downloadState(filename?: string): Promise<void> {

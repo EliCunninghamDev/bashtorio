@@ -146,10 +146,12 @@ function collectChunks(fsroot: FsEntry[]): string[] {
   return [...chunks]
 }
 
+const FS_CACHE_NAME = 'bashtorio-9p-v1'
+
 /**
- * Prefetch all 9p filesystem chunks into the browser HTTP cache.
- * Runs in the background with limited concurrency so it doesn't
- * starve the VM boot of bandwidth.
+ * Prefetch all 9p filesystem chunks into the Cache API for persistent storage.
+ * Chunks already in the cache are skipped. Runs in the background with limited
+ * concurrency so it doesn't starve the VM boot of bandwidth.
  */
 async function prefetch9pFiles(rootfsManifest: string, concurrency = 8): Promise<void> {
   const res = await fetch(vmAsset(rootfsManifest))
@@ -159,11 +161,36 @@ async function prefetch9pFiles(rootfsManifest: string, concurrency = 8): Promise
   const total = chunks.length
   let loaded = 0
 
+  const cache = 'caches' in self ? await caches.open(FS_CACHE_NAME) : null
+
+  // Quick check: if cache has at least as many entries as chunks, assume fully cached
+  const cachedKeys = cache ? await cache.keys() : []
+  if (cachedKeys.length >= total) {
+    emitGameEvent('fsCacheProgress', { loaded: total, total })
+    return
+  }
+
+  // Build set of cached URLs and find what's missing
+  const cached = new Set(cachedKeys.map(r => r.url))
+  const needed: string[] = []
+  for (const chunk of chunks) {
+    const url = baseurl + chunk
+    if (cached.has(new URL(url, location.href).href)) {
+      loaded++
+    } else {
+      needed.push(url)
+    }
+  }
+  if (loaded > 0) emitGameEvent('fsCacheProgress', { loaded, total })
+
   let i = 0
   async function next(): Promise<void> {
-    while (i < chunks.length) {
-      const url = baseurl + chunks[i++]
-      await fetch(url).catch(() => {})
+    while (i < needed.length) {
+      const url = needed[i++]
+      try {
+        const response = await fetch(url)
+        if (cache && response.ok) await cache.put(url, response)
+      } catch { /* ignore */ }
       loaded++
       emitGameEvent('fsCacheProgress', { loaded, total })
     }
@@ -455,7 +482,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     });
 
     setStatus('Testing VM...');
-    const ok = await vm.testVM();
+    const ok = await vm.testVM(setStatus);
 
     // Prefetch remaining 9p chunks AFTER boot (preload already awaited above)
     if (rootfsManifest) {
