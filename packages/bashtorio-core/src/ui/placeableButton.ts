@@ -28,24 +28,31 @@ export const PLACEABLE_COLUMNS: PlaceableColumn[] = [
   ]},
   { label: 'Process', items: [
     { id: 'command', icon: '🖥️', label: 'Shell', key: 'F' },
-    { id: 'filter', icon: '🚦', label: 'Filter', key: 'G' },
-    { id: 'counter', icon: '🔢', label: 'Count', key: 'N' },
-    { id: 'delay', icon: '⏱️', label: 'Delay', key: 'B' },
     { id: 'packer', icon: '📦', label: 'Pack', key: 'P' },
     { id: 'unpacker', icon: '📭', label: 'Unpack', key: 'U' },
+    { id: 'counter', icon: '🔢', label: 'Count', key: 'N' },
+    { id: 'delay', icon: '⏱️', label: 'Delay', key: 'B' },
+  ]},
+  { label: 'Transform', items: [
+    { id: 'filter', icon: '🚦', label: 'Filter', key: 'G' },
     { id: 'replace', icon: '🔄', label: 'Repl', key: 'L' },
     { id: 'math', icon: '🧮', label: 'Math', key: 'M' },
     { id: 'latch', icon: '🔒', label: 'Latch', key: 'Y' },
   ]},
-  { label: 'Output', items: [
+  { label: 'Display', items: [
     { id: 'sink', icon: '📥', label: 'Sink', key: 'S' },
     { id: 'display', icon: '💬', label: 'UTF8', key: 'A' },
     { id: 'null', icon: '🕳️', label: 'Null', key: 'X' },
     { id: 'sevenseg', icon: '🔢', label: '7Seg', key: 'Z' },
+    { id: 'screen', icon: '🖥️', label: 'Screen', key: '' },
+  ]},
+  { label: 'Audio', items: [
     { id: 'drum', icon: '🥁', label: 'Drum', key: 'E' },
     { id: 'tone', icon: '🔊', label: 'Tone', key: '' },
+    { id: 'noise', icon: '📻', label: 'Noise', key: '' },
     { id: 'speak', icon: '🗣️', label: 'Talk', key: '' },
-    { id: 'screen', icon: '🖥️', label: 'Screen', key: '' },
+  ]},
+  { label: 'Fun', items: [
     { id: 'tnt', icon: '🧨', label: 'TNT', key: '' },
   ]},
 ];

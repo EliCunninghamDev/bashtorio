@@ -186,6 +186,9 @@ export async function startSimulation(state: GameState): Promise<void> {
       case MachineType.TONE:
         emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform, dutyCycle: machine.dutyCycle });
         break;
+      case MachineType.NOISE:
+        emitGameEvent('noiseNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, mode: machine.noiseMode });
+        break;
       case MachineType.SPEAK:
         machine.accumulatedBuffer = '';
         machine.displayText = '';
@@ -277,6 +280,14 @@ export function stopSimulation(state: GameState): void {
     }
     if (machine.type === MachineType.TONE) {
       emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, waveform: machine.waveform, dutyCycle: machine.dutyCycle });
+    }
+    if (machine.type === MachineType.NOISE) {
+      emitGameEvent('noiseNote', { machineId: `m_${machine.x}_${machine.y}`, byte: 0, mode: machine.noiseMode });
+    }
+    if (machine.type === MachineType.TNT) {
+      machine.packetCount = 0;
+      machine.stored = [];
+      machine.exploded = false;
     }
   }
   emitGameEvent('speakCancel');
@@ -484,7 +495,8 @@ function applyMathOp(op: MathOp, value: number, operand: number): number {
   }
 }
 
-function deliverToMachine(state: GameState, machine: Machine, content: string, fromDir?: Direction): void {
+/** Returns true if the machine accepted the packet, false if rejected. */
+function deliverToMachine(state: GameState, machine: Machine, content: string, fromDir?: Direction): boolean {
   if (machine.type === MachineType.SINK) {
     // Push into circular drain-animation ring
     const entry = { char: content, time: now };
@@ -673,6 +685,12 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, f
     machine.lastCommandTime = now;
     emitGameEvent('toneNote', { machineId: `m_${machine.x}_${machine.y}`, byte: content.charCodeAt(0), waveform: machine.waveform, dutyCycle: machine.dutyCycle });
   }
+  // NOISE: LFSR noise channel, consumes byte (terminal)
+  else if (machine.type === MachineType.NOISE) {
+    const byte = content.charCodeAt(0);
+    machine.lastCommandTime = byte === 0 ? 0 : now;
+    emitGameEvent('noiseNote', { machineId: `m_${machine.x}_${machine.y}`, byte, mode: machine.noiseMode });
+  }
   // SPEAK: accumulate bytes, speak on delimiter (terminal)
   else if (machine.type === MachineType.SPEAK) {
     if (content === machine.speakDelimiter) {
@@ -697,10 +715,11 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, f
   }
   // TNT: collect packets, explode at 20
   else if (machine.type === MachineType.TNT) {
-    if (machine.exploded) return;
+    if (machine.exploded) return false;
     machine.stored.push(content);
     machine.packetCount++;
     machine.lastCommandTime = now;
+    emitGameEvent('tntSpark', { machineId: `m_${machine.x}_${machine.y}`, count: machine.packetCount });
     if (machine.packetCount >= 20) {
       machine.exploded = true;
       const count = machine.stored.length;
@@ -720,9 +739,11 @@ function deliverToMachine(state: GameState, machine: Machine, content: string, f
         });
       }
       machine.stored = [];
+      emitGameEvent('tntExplode', { machineId: `m_${machine.x}_${machine.y}`, x: machine.x, y: machine.y, count });
     }
   }
   // KEYBOARD: output-only, no-op on receive
+  return true;
 }
 
 // A packet must never move more than one cell per frame, or it skips cells.
@@ -839,7 +860,10 @@ function updatePacket(
   // Entering a machine
   if (nextCell.type === CellType.MACHINE) {
     const machineCell = nextCell as MachineCell;
-    deliverToMachine(state, machineCell.machine, packet.content, ((packet.dir + 2) % 4) as Direction);
+    const accepted = deliverToMachine(state, machineCell.machine, packet.content, ((packet.dir + 2) % 4) as Direction);
+    if (!accepted) {
+      orphanPacket(state, packet, nextX, nextY);
+    }
     return false;
   }
 

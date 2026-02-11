@@ -79,6 +79,7 @@ import type { MachinePicker } from './ui/machinePicker';
 // ----------- Internal Imports: Audio -----------
 import { initSound, connectSoundEvents, loadSounds, startLoop, destroySound, play } from './audio/SoundSystem';
 import { connectToneEvents, destroyTones } from './audio/ToneEngine';
+import { connectNoiseEvents, destroyNoise } from './audio/NoiseEngine';
 import { connectSpeechEvents, destroySpeech } from './audio/SpeechEngine';
 
 // ----------- Internal Imports: Events -----------
@@ -436,6 +437,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       <bt-sink-modal></bt-sink-modal>
       <bt-drum-modal></bt-drum-modal>
       <bt-tone-modal></bt-tone-modal>
+      <bt-noise-modal></bt-noise-modal>
       <bt-speak-modal></bt-speak-modal>
       <bt-screen-modal></bt-screen-modal>
       <bt-byte-modal></bt-byte-modal>
@@ -504,6 +506,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
     });
     connectSoundEvents(settings);
     connectToneEvents();
+    connectNoiseEvents();
     connectSpeechEvents();
     loadSounds().then(() => {
       startLoop('editingAmbient');
@@ -594,6 +597,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
         vm.destroyVM();
         destroySound();
         destroyTones();
+        destroyNoise();
         destroySpeech();
         destroyGameEvents();
         container.innerHTML = '';
@@ -601,6 +605,7 @@ export async function mount(config: BashtorioConfig): Promise<BashtorioInstance>
       downloadState: () => vm.downloadState(),
     };
 
+    window.dispatchEvent(new CustomEvent('bashtorio:ready'));
     onReady?.();
     return instance;
   } catch (error) {

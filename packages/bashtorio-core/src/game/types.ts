@@ -58,6 +58,7 @@ export enum MachineType {
   SEVENSEG = 'sevenseg',
   DRUM = 'drum',
   TONE = 'tone',
+  NOISE = 'noise',
   SPEAK = 'speak',
   SCREEN = 'screen',
   BYTE = 'byte',
@@ -112,6 +113,7 @@ export interface SinkMachine extends MachineBase {
 
 export interface CommandMachine extends MachineBase {
   type: MachineType.COMMAND;
+  label: string;
   command: string;
   autoStart: boolean;
   stream: boolean;
@@ -279,6 +281,11 @@ export interface ToneMachine extends MachineBase {
   dutyCycle: number;
 }
 
+export interface NoiseMachine extends MachineBase {
+  type: MachineType.NOISE;
+  noiseMode: '15bit' | '7bit';
+}
+
 export interface SpeakMachine extends MachineBase {
   type: MachineType.SPEAK;
   speakRate: number;
@@ -355,6 +362,7 @@ export type Machine =
   | SevenSegMachine
   | DrumMachine
   | ToneMachine
+  | NoiseMachine
   | SpeakMachine
   | ScreenMachine
   | ByteMachine
@@ -389,6 +397,7 @@ export interface MachineByType {
   [MachineType.SEVENSEG]: SevenSegMachine;
   [MachineType.DRUM]: DrumMachine;
   [MachineType.TONE]: ToneMachine;
+  [MachineType.NOISE]: NoiseMachine;
   [MachineType.SPEAK]: SpeakMachine;
   [MachineType.SCREEN]: ScreenMachine;
   [MachineType.BYTE]: ByteMachine;
@@ -445,7 +454,7 @@ export interface Packet {
 }
 
 export type CursorMode = 'select' | 'erase' | 'machine';
-export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'speak' | 'screen' | 'byte' | 'punchcard' | 'tnt' | 'button';
+export type PlaceableType = 'belt' | 'splitter' | 'source' | 'command' | 'sink' | 'display' | 'null' | 'linefeed' | 'flipper' | 'duplicator' | 'filter' | 'counter' | 'delay' | 'keyboard' | 'packer' | 'unpacker' | 'router' | 'gate' | 'wireless' | 'replace' | 'math' | 'clock' | 'latch' | 'sevenseg' | 'drum' | 'tone' | 'noise' | 'speak' | 'screen' | 'byte' | 'punchcard' | 'tnt' | 'button';
 
 export interface OrphanedPacket {
 	id: number;

@@ -29,6 +29,7 @@ import {
   type KeyboardMachine,
   type UnpackerMachine,
   type ToneMachine,
+  type NoiseMachine,
   type ScreenMachine,
   type PunchCardMachine,
   type ByteMachine,
@@ -171,6 +172,7 @@ let CLR_TOOLTIP_BORDER  = '#cccccc';
 let CLR_TOOLTIP_CMD     = '#33ff33';
 let CLR_TOOLTIP_INPUT   = '#ffaa00';
 let CLR_TOOLTIP_OUTPUT  = '#cccccc';
+let CLR_CONTRAST_TEXT   = '#ffffff';
 
 // Flash interpolation targets
 let FLASH_R = 0x33;
@@ -221,6 +223,7 @@ let MACHINE_COLORS: Record<MachineType, MachineColor> = {
   [MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
   [MachineType.DRUM]:       { bg: '#4a3a2a', border: '#aa7744', text: '#ffcc66' },
   [MachineType.TONE]:       { bg: '#3a2a5a', border: '#7a4aaa', text: '#cc99ff' },
+  [MachineType.NOISE]:      { bg: '#2a3a2a', border: '#5a8a5a', text: '#88cc88' },
   [MachineType.SPEAK]:      { bg: '#2a4a5a', border: '#4a8aaa', text: '#88ddff' },
   [MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
   [MachineType.BYTE]:       { bg: '#2a4a3a', border: '#4a8a6a', text: '#88ffcc' },
@@ -286,6 +289,7 @@ export function applyRendererTheme(theme: ColorTheme): void {
   CLR_TOOLTIP_CMD     = theme.tooltipCmd;
   CLR_TOOLTIP_INPUT   = theme.tooltipInput;
   CLR_TOOLTIP_OUTPUT  = theme.tooltipOutput;
+  CLR_CONTRAST_TEXT   = theme.contrastText;
   MACHINE_COLORS      = theme.machineColors;
 }
 
@@ -616,6 +620,9 @@ export class Renderer {
         break;
       case 'tone':
         this.drawMachineBox(col, row, MachineType.TONE, 'SIN');
+        break;
+      case 'noise':
+        this.drawMachineBox(col, row, MachineType.NOISE, 'NSE');
         break;
       case 'speak':
         this.drawMachineBox(col, row, MachineType.SPEAK, 'TALK');
@@ -1121,6 +1128,45 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------------------
+  // Noise field (animated white noise pixels)
+  // -------------------------------------------------------------------------
+
+  private drawNoiseField(machine: NoiseMachine): void {
+    const ctx = this.ctx;
+    const mcx = cx(machine.x);
+    const mcy = cy(machine.y);
+    const color = MACHINE_COLORS[MachineType.NOISE];
+    const active = now - machine.lastCommandTime < 2000;
+
+    // Draw a grid of random pixels that change every frame when active
+    const gridN = 6;
+    const pixW = 28;
+    const pixSize = pixW / gridN;
+    const startX = mcx - pixW / 2;
+    const startY = mcy - pixW / 2;
+
+    // Seed from machine position + time for animation
+    const seed = active ? (machine.x * 7 + machine.y * 13 + Math.floor(now * 0.03)) : (machine.x * 7 + machine.y * 13);
+
+    for (let yi = 0; yi < gridN; yi++) {
+      for (let xi = 0; xi < gridN; xi++) {
+        const h = fract(Math.sin((seed + yi * gridN + xi) * 127.1) * 43758.5453);
+        const bright = active ? h : h * 0.3;
+        const c = Math.floor(bright * 255);
+        ctx.fillStyle = `rgb(${c},${c},${c})`;
+        ctx.fillRect(startX + xi * pixSize, startY + yi * pixSize, pixSize - 0.5, pixSize - 0.5);
+      }
+    }
+
+    // Mode label
+    ctx.fillStyle = active ? color.text : color.border;
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(machine.noiseMode === '7bit' ? '7bit' : '15b', mcx, mcy + HALF_GRID - 3);
+  }
+
+  // -------------------------------------------------------------------------
   // Screen (monochrome bitmap display)
   // -------------------------------------------------------------------------
 
@@ -1291,6 +1337,8 @@ export class Renderer {
       this.drawClockFace(machine);
     } else if (machine.type === MachineType.TONE) {
       this.drawToneWaveform(machine);
+    } else if (machine.type === MachineType.NOISE) {
+      this.drawNoiseField(machine);
     } else {
       let label: string;
       switch (machine.type) {
@@ -2206,6 +2254,31 @@ export class Renderer {
   // Machine tooltip (command machines)
   // -------------------------------------------------------------------------
 
+  /** Wrap a command string character-by-character to fit within maxPx. */
+  private wrapCommand(text: string, maxPx: number, prefix: string, contPrefix: string): string[] {
+    const ctx = this.ctx;
+    const result: string[] = [];
+    let current = prefix;
+    let pfx = prefix;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '\n') {
+        result.push(current);
+        current = contPrefix;
+        pfx = contPrefix;
+        continue;
+      }
+      if (ctx.measureText(current + ch).width > maxPx && current.length > pfx.length) {
+        result.push(current);
+        current = contPrefix;
+        pfx = contPrefix;
+      }
+      current += ch;
+    }
+    if (current.length > 0) result.push(current);
+    return result;
+  }
+
   private drawMachineTooltip(machine: CommandMachine): void {
     const ctx = this.ctx;
     const mx = cx(machine.x);
@@ -2214,21 +2287,29 @@ export class Renderer {
     const cwd = machine.cwd || '/';
     const command = machine.command || 'cat';
 
-    const lines: string[] = [];
-    if (cwd !== '/') lines.push(cwd);
-    lines.push(`$ ${command}`);
+    ctx.font = FONT_TOOLTIP;
+    const contentMax = TOOLTIP_MAX_WIDTH - TOOLTIP_PADDING * 2;
+
+    type TaggedLine = { text: string; tag: 'cwd' | 'cmd' | 'input' | 'output' | 'status' };
+    const lines: TaggedLine[] = [];
+
+    if (cwd !== '/') lines.push({ text: cwd, tag: 'cwd' });
+
+    for (const wl of this.wrapCommand(command, contentMax, '$ ', '  ')) {
+      lines.push({ text: wl, tag: 'cmd' });
+    }
 
     if (machine.stream) {
-      lines.push(machine.shell ? 'streaming...' : 'no shell');
+      lines.push({ text: machine.shell ? 'streaming...' : 'no shell', tag: 'status' });
     } else {
       const inputBuffer = machine.pendingInput || '';
       if (inputBuffer.length > 0) {
         const display = inputBuffer.length > TOOLTIP_BUFFER_TRUNC
           ? inputBuffer.slice(0, TOOLTIP_BUFFER_SLICE) + '...'
           : inputBuffer;
-        lines.push(`> ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`);
+        lines.push({ text: `> ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`, tag: 'input' });
       } else {
-        lines.push('>');
+        lines.push({ text: '>', tag: 'input' });
       }
     }
 
@@ -2237,31 +2318,43 @@ export class Renderer {
       const display = outputBuffer.length > TOOLTIP_BUFFER_TRUNC
         ? outputBuffer.slice(0, TOOLTIP_BUFFER_SLICE) + '...'
         : outputBuffer;
-      lines.push(`< ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`);
+      lines.push({ text: `< ${display.replace(/\n/g, '↵').replace(/\r/g, '')}`, tag: 'output' });
     } else {
-      lines.push('<');
+      lines.push({ text: '<', tag: 'output' });
     }
 
     // Measure
-    ctx.font = FONT_TOOLTIP;
     let maxWidth = 0;
-    for (const line of lines) {
-      const w = ctx.measureText(line).width;
+    for (const { text } of lines) {
+      const w = ctx.measureText(text).width;
       if (w > maxWidth) maxWidth = w;
     }
 
     const bubbleWidth = Math.min(maxWidth + TOOLTIP_PADDING * 2, TOOLTIP_MAX_WIDTH);
     const bubbleHeight = lines.length * TOOLTIP_LINE_HEIGHT + TOOLTIP_PADDING * 2;
+    const labelHeight = TOOLTIP_LINE_HEIGHT + 2;
 
     let bubbleX = mx - bubbleWidth / 2;
-    let bubbleY = my - bubbleHeight - BUBBLE_GAP;
+    let bubbleY = my - labelHeight - bubbleHeight - BUBBLE_GAP;
+    let above = true;
 
     const ttEs = cam.getScale();
     const ttVisLeft = cam.getX() + BUBBLE_MARGIN / ttEs;
     const ttVisRight = cam.getX() + this.canvas.width / ttEs - bubbleWidth - BUBBLE_MARGIN / ttEs;
     const ttVisTop = cam.getY() + BUBBLE_MARGIN / ttEs;
     bubbleX = clamp(bubbleX, ttVisLeft, ttVisRight);
-    if (bubbleY < ttVisTop) bubbleY = my + GRID_SIZE + BUBBLE_GAP;
+    if (bubbleY < ttVisTop) {
+      bubbleY = my + GRID_SIZE + BUBBLE_GAP + labelHeight;
+      above = false;
+    }
+
+    // Label above tooltip
+    const labelY = above ? bubbleY - labelHeight : bubbleY - labelHeight;
+    ctx.font = FONT_TOOLTIP;
+    ctx.fillStyle = CLR_CONTRAST_TEXT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(machine.label, bubbleX + TOOLTIP_PADDING, labelY);
 
     // Background
     ctx.fillStyle = CLR_TOOLTIP_BG;
@@ -2277,7 +2370,7 @@ export class Renderer {
     // Pointer
     ctx.fillStyle = CLR_TOOLTIP_BORDER;
     ctx.beginPath();
-    if (bubbleY < my) {
+    if (above) {
       ctx.moveTo(mx - BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
       ctx.lineTo(mx + BUBBLE_POINTER_HALF, bubbleY + bubbleHeight);
       ctx.lineTo(mx, bubbleY + bubbleHeight + BUBBLE_POINTER_HEIGHT);
@@ -2291,22 +2384,21 @@ export class Renderer {
     // Lines
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
+    ctx.font = FONT_TOOLTIP;
+
+    const TAG_COLORS: Record<TaggedLine['tag'], string> = {
+      cmd: CLR_TOOLTIP_CMD,
+      input: CLR_TOOLTIP_OUTPUT,
+      output: CLR_TOOLTIP_INPUT,
+      cwd: CLR_TOOLTIP_BORDER,
+      status: CLR_TOOLTIP_BORDER,
+    };
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const { text, tag } = lines[i];
       const ly = bubbleY + TOOLTIP_PADDING + i * TOOLTIP_LINE_HEIGHT;
-
-      if (line.startsWith('$')) {
-        ctx.fillStyle = CLR_TOOLTIP_CMD;
-      } else if (line.startsWith('>')) {
-        ctx.fillStyle = CLR_TOOLTIP_OUTPUT;
-      } else if (line.startsWith('<')) {
-        ctx.fillStyle = CLR_TOOLTIP_INPUT;
-      } else {
-        ctx.fillStyle = CLR_TOOLTIP_BORDER;  // muted (cwd)
-      }
-
-      ctx.fillText(line, bubbleX + TOOLTIP_PADDING, ly, bubbleWidth - TOOLTIP_PADDING * 2);
+      ctx.fillStyle = TAG_COLORS[tag];
+      ctx.fillText(text, bubbleX + TOOLTIP_PADDING, ly, bubbleWidth - TOOLTIP_PADDING * 2);
     }
   }
 

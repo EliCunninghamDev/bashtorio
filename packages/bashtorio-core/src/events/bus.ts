@@ -81,6 +81,9 @@ export interface GameEventMap {
   latchRelease: undefined;
   drumHit: { sample: number };
   toneNote: { machineId: string; byte: number; waveform: OscillatorType; dutyCycle: number };
+  noiseNote: { machineId: string; byte: number; mode: '15bit' | '7bit' };
+  tntSpark: { machineId: string; count: number };
+  tntExplode: { machineId: string; x: number; y: number; count: number };
   speak: { text: string; rate: number; pitch: number };
   speakCancel: undefined;
 

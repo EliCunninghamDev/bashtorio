@@ -3,14 +3,20 @@ import { EmitTimer } from './clock';
 
 export const machines: Machine[] = [];
 let sinkIdCounter = 1;
+let commandIdCounter = 1;
 
 export function nextSinkId(): number { return sinkIdCounter++; }
 export function getSinkIdCounter(): number { return sinkIdCounter; }
 export function setSinkIdCounter(v: number): void { sinkIdCounter = v; }
 
+export function nextCommandId(): number { return commandIdCounter++; }
+export function getCommandIdCounter(): number { return commandIdCounter; }
+export function setCommandIdCounter(v: number): void { commandIdCounter = v; }
+
 export function clearMachines(): void {
   machines.length = 0;
   sinkIdCounter = 1;
+  commandIdCounter = 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,7 +35,9 @@ export function sinkDefaults(): MachineDefaults<MachineType.SINK> {
 }
 
 export function commandDefaults(): MachineDefaults<MachineType.COMMAND> {
+  const id = nextCommandId();
   return {
+    label: `Shell ${id}`,
     command: 'cat', autoStart: false, stream: false, inputMode: 'pipe',
     pendingInput: '', outputBuffer: '', processing: false, lastInputTime: 0,
     autoStartRan: false, cwd: '/', shell: null, pollPending: false, bytesIn: 0, bytesOut: 0,
@@ -121,6 +129,10 @@ export function toneDefaults(): MachineDefaults<MachineType.TONE> {
   return { waveform: 'sine', dutyCycle: 0.5 };
 }
 
+export function noiseDefaults(): MachineDefaults<MachineType.NOISE> {
+  return { noiseMode: '15bit' };
+}
+
 export function speakDefaults(): MachineDefaults<MachineType.SPEAK> {
   return { speakRate: 1, speakPitch: 1, speakDelimiter: '\n', accumulatedBuffer: '', displayText: '', displayTime: 0 };
 }
@@ -180,6 +192,7 @@ export function createMachine(x: number, y: number, machineType: MachineType, di
     case MachineType.SEVENSEG:   return { ...base, type: MachineType.SEVENSEG, ...sevensegDefaults() };
     case MachineType.DRUM:       return { ...base, type: MachineType.DRUM, ...drumDefaults() };
     case MachineType.TONE:       return { ...base, type: MachineType.TONE, ...toneDefaults() };
+    case MachineType.NOISE:      return { ...base, type: MachineType.NOISE, ...noiseDefaults() };
     case MachineType.SPEAK:      return { ...base, type: MachineType.SPEAK, ...speakDefaults() };
     case MachineType.SCREEN:     return { ...base, type: MachineType.SCREEN, ...screenDefaults() };
     case MachineType.BYTE:       return { ...base, type: MachineType.BYTE, ...byteDefaults() };

@@ -8,7 +8,7 @@ import {
   setBelt, setMachineCell,
 } from '../game/grid';
 import { getSplitterSecondary } from '../game/edit';
-import { machines, getSinkIdCounter, setSinkIdCounter, clearMachines } from '../game/machines';
+import { machines, getSinkIdCounter, setSinkIdCounter, getCommandIdCounter, setCommandIdCounter, clearMachines } from '../game/machines';
 import { emitGameEvent, onGameEvent } from '../events/bus';
 import { PRESETS } from './presets';
 import { createLogger } from './logger';
@@ -27,6 +27,7 @@ export interface SaveData {
   machines: SerializedMachine[];
   sourceText?: string;
   sinkIdCounter: number;
+  commandIdCounter?: number;
   beltSpeed?: number;
 }
 
@@ -51,6 +52,7 @@ interface SerializedMachine {
   y: number;
   type: MachineType;
   command: string;
+  label?: string;
   autoStart: boolean;
   sinkId: number;
   name?: string;
@@ -87,6 +89,7 @@ interface SerializedMachine {
   splitterDir?: number;
   waveform?: string;
   dutyCycle?: number;
+  noiseMode?: string;
   gapInterval?: number;
   speakRate?: number;
   speakPitch?: number;
@@ -142,6 +145,7 @@ export function serializeState(state: GameState): SaveData {
         break;
       case MachineType.COMMAND:
         base.command = m.command;
+        base.label = m.label;
         base.autoStart = m.autoStart;
         base.stream = m.stream;
         if (m.inputMode !== 'pipe') base.inputMode = m.inputMode;
@@ -207,6 +211,9 @@ export function serializeState(state: GameState): SaveData {
         base.waveform = m.waveform;
         if (m.dutyCycle !== 0.5) base.dutyCycle = m.dutyCycle;
         break;
+      case MachineType.NOISE:
+        base.noiseMode = m.noiseMode;
+        break;
       case MachineType.SPEAK:
         base.speakRate = m.speakRate;
         base.speakPitch = m.speakPitch;
@@ -243,6 +250,7 @@ export function serializeState(state: GameState): SaveData {
     cells,
     machines: serializedMachines,
     sinkIdCounter: getSinkIdCounter(),
+    commandIdCounter: getCommandIdCounter(),
     beltSpeed: state.beltSpeed,
   };
 }
@@ -302,6 +310,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
         machine = {
           ...base,
           type: MachineType.COMMAND,
+          label: sm.label ?? `Shell ${sm.x},${sm.y}`,
           command: sm.command,
           autoStart: sm.autoStart,
           stream: sm.stream ?? sm.async ?? false,
@@ -492,6 +501,9 @@ export function deserializeState(state: GameState, data: SaveData): void {
       case MachineType.TONE:
         machine = { ...base, type: MachineType.TONE, waveform: (sm.waveform ?? 'sine') as OscillatorType, dutyCycle: sm.dutyCycle ?? 0.5 };
         break;
+      case MachineType.NOISE:
+        machine = { ...base, type: MachineType.NOISE, noiseMode: (sm.noiseMode ?? '15bit') as '15bit' | '7bit' };
+        break;
       case MachineType.SPEAK:
         machine = {
           ...base,
@@ -603,6 +615,7 @@ export function deserializeState(state: GameState, data: SaveData): void {
 
   // Restore other state
   setSinkIdCounter(data.sinkIdCounter ?? 1);
+  setCommandIdCounter(data.commandIdCounter ?? 1);
   state.beltSpeed = data.beltSpeed ?? 2;
   emitGameEvent('beltSpeedChanged', { beltSpeed: state.beltSpeed });
 }

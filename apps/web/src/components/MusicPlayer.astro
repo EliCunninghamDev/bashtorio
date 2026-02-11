@@ -111,18 +111,24 @@ const { tracks } = Astro.props;
     btn.addEventListener('click', function() { playTrack(); });
     stfu.addEventListener('click', function() { stopMusic(); });
 
-    // Clean up when loader is removed
-    var observer = new MutationObserver(function(mutations) {
-      for (var i = 0; i < mutations.length; i++) {
-        for (var j = 0; j < mutations[i].removedNodes.length; j++) {
-          if (mutations[i].removedNodes[j].id === 'js-loader') {
-            if (audio) { audio.pause(); audio.src = ''; }
-            observer.disconnect();
-            return;
+    // Fade out music when game is fully initialized
+    window.addEventListener('bashtorio:ready', function() {
+      if (audio && playing) {
+        var fadeAudio = audio;
+        var vol = fadeAudio.volume;
+        var fade = setInterval(function() {
+          vol -= 0.05;
+          if (vol <= 0) {
+            clearInterval(fade);
+            fadeAudio.pause();
+            fadeAudio.src = '';
+          } else {
+            fadeAudio.volume = vol;
           }
-        }
+        }, 50);
       }
-    });
-    observer.observe(document.getElementById('app'), { childList: true });
+      audio = null;
+      playing = false;
+    }, { once: true });
   })();
 </script>

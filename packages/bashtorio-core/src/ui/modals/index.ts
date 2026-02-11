@@ -18,6 +18,7 @@ import './SourceModal';
 import './CommandModal';
 import './DrumModal';
 import './ToneModal';
+import './NoiseModal';
 import './SpeakModal';
 import './ScreenModal';
 import './ByteModal';
@@ -51,6 +52,7 @@ import type { SourceModal } from './SourceModal';
 import type { CommandModal } from './CommandModal';
 import type { DrumModal } from './DrumModal';
 import type { ToneModal } from './ToneModal';
+import type { NoiseModal } from './NoiseModal';
 import type { SpeakModal } from './SpeakModal';
 import type { ScreenModal } from './ScreenModal';
 import type { ByteModal } from './ByteModal';
@@ -97,6 +99,7 @@ export function setupModals(
   const latchModal = container.querySelector('bt-latch-modal') as LatchModal;
   const drumModal = container.querySelector('bt-drum-modal') as DrumModal;
   const toneModal = container.querySelector('bt-tone-modal') as ToneModal;
+  const noiseModal = container.querySelector('bt-noise-modal') as NoiseModal;
   const speakModal = container.querySelector('bt-speak-modal') as SpeakModal;
   const screenModal = container.querySelector('bt-screen-modal') as ScreenModal;
   const byteModal = container.querySelector('bt-byte-modal') as ByteModal;
@@ -178,6 +181,9 @@ export function setupModals(
         break;
       case MachineType.TONE:
         toneModal.configure(machine);
+        break;
+      case MachineType.NOISE:
+        noiseModal.configure(machine);
         break;
       case MachineType.SPEAK:
         speakModal.configure(machine);

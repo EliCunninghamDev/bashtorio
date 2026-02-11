@@ -26,7 +26,7 @@ function placeBelt(grid: any[][], x: number, y: number, dir: Direction) {
 }
 
 // Helper to place a machine
-function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; autoStart?: boolean; async?: boolean; sinkId?: number; flipperDir?: Direction; emitInterval?: number; sourceText?: string; loop?: boolean } = {}) {
+function placeMachine(grid: any[][], machines: any[], x: number, y: number, type: MachineType, opts: { command?: string; label?: string; autoStart?: boolean; async?: boolean; sinkId?: number; flipperDir?: Direction; emitInterval?: number; sourceText?: string; loop?: boolean } = {}) {
   const idx = machines.length;
   const m: any = {
     x, y, type,
@@ -34,6 +34,7 @@ function placeMachine(grid: any[][], machines: any[], x: number, y: number, type
     autoStart: opts.autoStart ?? false,
     sinkId: opts.sinkId ?? 0,
   };
+  if (opts.label !== undefined) m.label = opts.label;
   if (opts.async !== undefined) m.async = opts.async;
   if (opts.flipperDir !== undefined) m.flipperDir = opts.flipperDir;
   if (opts.emitInterval !== undefined) m.emitInterval = opts.emitInterval;
@@ -59,6 +60,7 @@ function createSamplePreset(): SaveData {
 
   // grep command at (5, 3)
   placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
+    label: 'Filter',
     command: 'grep -i bashtorio',
   });
 
@@ -97,7 +99,7 @@ function createRot13Preset(): SaveData {
   }
 
   // ROT13 encode at (4, 3)
-  placeMachine(grid, machines, 4, 3, MachineType.COMMAND, { command: rot13 });
+  placeMachine(grid, machines, 4, 3, MachineType.COMMAND, { label: 'Encoder', command: rot13 });
 
   // Belt from encode to duplicator
   placeBelt(grid, 5, 3, Direction.RIGHT);
@@ -115,7 +117,7 @@ function createRot13Preset(): SaveData {
   // --- Lower path: DOWN → ROT13 decode → Decoded sink ---
   placeBelt(grid, 7, 4, Direction.DOWN);
   placeBelt(grid, 7, 5, Direction.DOWN);
-  placeMachine(grid, machines, 7, 6, MachineType.COMMAND, { command: rot13 });
+  placeMachine(grid, machines, 7, 6, MachineType.COMMAND, { label: 'Decoder', command: rot13 });
   for (let x = 8; x <= 12; x++) {
     placeBelt(grid, x, 6, Direction.RIGHT);
   }
@@ -144,6 +146,7 @@ function createUppercasePreset(): SaveData {
   }
 
   placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
+    label: 'Uppercaser',
     command: "tr 'a-z' 'A-Z'",
   });
 
@@ -176,6 +179,7 @@ function createWordReverserPreset(): SaveData {
   }
 
   placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
+    label: 'Reverser',
     command: 'rev',
   });
 
@@ -208,6 +212,7 @@ function createPipelinePreset(): SaveData {
   }
 
   placeMachine(grid, machines, 4, 3, MachineType.COMMAND, {
+    label: 'Uppercaser',
     command: "tr 'a-z' 'A-Z'",
   });
 
@@ -216,6 +221,7 @@ function createPipelinePreset(): SaveData {
   }
 
   placeMachine(grid, machines, 8, 3, MachineType.COMMAND, {
+    label: 'Reverser',
     command: 'rev',
   });
 
@@ -248,6 +254,7 @@ function createBase64Preset(): SaveData {
   }
 
   placeMachine(grid, machines, 5, 3, MachineType.COMMAND, {
+    label: 'Encoder',
     command: 'base64',
   });
 
@@ -290,6 +297,7 @@ function createDuplicatorDemoPreset(): SaveData {
 
 	// Uppercase command at (5, 1)
 	placeMachine(grid, machines, 5, 1, MachineType.COMMAND, {
+		label: 'Uppercaser',
 		command: "tr 'a-z' 'A-Z'",
 	});
 
@@ -306,6 +314,7 @@ function createDuplicatorDemoPreset(): SaveData {
 
 	// Lowercase command at (5, 5)
 	placeMachine(grid, machines, 5, 5, MachineType.COMMAND, {
+		label: 'Lowercaser',
 		command: "tr 'A-Z' 'a-z'",
 	});
 
@@ -382,7 +391,7 @@ function createFibonacciPreset(): SaveData {
       { x:  1, y: -19, type: 'belt', dir: 0 },
     ],
     machines: [
-      { x: 0, y: -17, type: MachineType.COMMAND, command: "awk '{print $2, $1+$2}'", autoStart: false, sinkId: 0, stream: false },
+      { x: 0, y: -17, type: MachineType.COMMAND, command: "awk '{print $2, $1+$2}'", label: 'Sequencer', autoStart: false, sinkId: 0, stream: false },
       { x: -3, y: -17, type: MachineType.DUPLICATOR, command: '', autoStart: false, sinkId: 0 },
       { x: -6, y: -17, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 200, sourceText: '0 1\n', loop: false },
       { x: -3, y: -19, type: MachineType.REPLACE, command: '', autoStart: false, sinkId: 0, replaceFrom: ' ', replaceTo: '\n' },
@@ -397,106 +406,208 @@ function createFibonacciPreset(): SaveData {
   };
 }
 
-// MML Tone - Korobeiniki (three voices): lead + bass + drums
-function createMMLTonePreset(): SaveData {
-  // One note per line so awk outputs each byte immediately (no burst buffering).
-  // Every line is 3 chars (padded with dots) for even timing between voices.
-  // At emitInterval 75ms, each note = 4 chars (3 + newline) × 75ms = 300ms.
-  const n3 = (c: string) => `..${c}`;  // octave 3 note (dots are no-ops)
-  const n2 = (c: string) => `O2${c}`;  // octave 2 note
-  const R = '..R';
+// Cave Story Main Theme (four voices, transcribed from XM module)
+function createCaveStoryPreset(): SaveData {
+  // Transcribed from the official XM module by Daisuke "Pixel" Amaya
+  // First 8 patterns × 24 rows = 192 bytes, 92ms per byte (Speed 6, BPM 163)
+  // Bass raised +1 octave for audibility
 
-  const melody = [
-    // A section: E B C D C B A A
-    n3('E'), n2('B'), n3('C'), n3('D'), n3('C'), n2('B'), n2('A'), n2('A'),
-    //          C E D C B C D E
-    n3('C'), n3('E'), n3('D'), n3('C'), n2('B'), n3('C'), n3('D'), n3('E'),
-    //          C A A - | B: D D F A
-    n3('C'), n2('A'), n2('A'), R,       n3('D'), n3('D'), n3('F'), n3('A'),
-    // B section: G F E C E D C B
-    n3('G'), n3('F'), n3('E'), n3('C'), n3('E'), n3('D'), n3('C'), n2('B'),
-    //          B C D E C A A -
-    n2('B'), n3('C'), n3('D'), n3('E'), n3('C'), n2('A'), n2('A'), R,
-    // A reprise: E B C D C B A -
-    n3('E'), n2('B'), n3('C'), n3('D'), n3('C'), n2('B'), n2('A'), R,
-  ].join('\n') + '\n';
-
-  const bass = [
-    // Am root-fifth pulse (A section, 16 notes)
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
-    // Am → Dm at B section (8 notes)
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('D'), n2('A'), n2('D'), n2('A'),
-    // B section Am (16 notes)
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
-    // A reprise Am (8 notes)
-    n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'), n2('A'), n2('E'),
-  ].join('\n') + '\n';
-
-  // Drum pattern — bitmask mode: bit0=kick, bit1=snare, bit2=hat, bit3=tom
-  // 48 beats (6 bars × 8 eighth-notes), emitted at 300ms each to match the note rate.
-  // Beat:  1    &    2    &    3    &    4    &
-  //        K+H  H    S+H  H    K+H  H    S+H  H
-  const K_H = 5;   // kick + hat
-  const H   = 4;   // hat only
-  const S_H = 6;   // snare + hat
-  const T_H = 12;  // tom + hat (fill)
-  const drumBar  = [K_H, H, S_H, H, K_H, H, S_H, H];
-  const drumFill = [K_H, H, S_H, H, K_H, T_H, T_H, T_H];
-  const drumData = [
-    ...drumBar,                   // bar 1
-    ...drumBar,                   // bar 2
-    ...drumFill,                  // bar 3 (fill into B section)
-    ...drumBar,                   // bar 4
-    ...drumFill,                  // bar 5 (fill into reprise)
-    ...drumBar,                   // bar 6
+  const lead = [
+    112,112,112,126,126,126,112,112,112,126,126,126,109,109,109,126,
+    126,126,109,109,109,126,126,126,106,106,106,126,126,126,106,106,
+    106,126,126,126,103,103,103,126,126,126,103,103,103,106,106,109,
+    112,112,112,126,126,126,112,112,112,126,126,126,109,109,109,126,
+    126,126,109,109,109,126,126,126,106,106,106,126,126,126,106,106,
+    106,126,126,126,135,135,135,132,132,132,126,126,126,  0,  0,  0,
+    112,112,112,117,  0,117,120,120,126,120,  0,117,112,112,112,  0,
+      0,  0,120,120,126,120,  0,117,112,112,112,100,100,100,120,  0,
+    120,117,117,112,117,117,117,106,106,106,126,126,126,117,117,117,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
   ];
 
-  // awk: converts MML note names to frequency bytes matching ToneEngine's MIDI 21-108 range.
-  // Formula: byte = ((midi - 21) * 254/87) + 1, where midi = (octave+1)*12 + semitone
-  const cmd = `awk 'BEGIN{n["C"]=0;n["D"]=2;n["E"]=4;n["F"]=5;n["G"]=7;n["A"]=9;n["B"]=11}{o=3;for(i=1;i<=length;i++){c=substr($0,i,1);if(c=="O"){i++;o=substr($0,i,1)+0}else if(c in n){b=int(((o+1)*12+n[c]-21)*254/87+1.5);if(b<1)b=1;if(b>255)b=255;printf"%c",b}else if(c=="R")printf"%c",0}fflush()}'`;
+  const harmony = [
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    124,124,124,129,  0,129,132,132,138,132,  0,129,124,124,124,  0,
+      0,  0,132,132,138,132,  0,129,124,124,124,112,112,112,132,  0,
+    132,129,129,124,129,129,129,118,118,118,138,138,118,121,121,121,
+  ];
+
+  const bass = [
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 45, 45, 45, 48, 48, 51,
+     54, 54, 54, 54, 54, 54, 54, 54, 54, 45, 45, 54, 51, 51, 51, 51,
+     51, 51, 51, 51, 51, 39, 39, 51, 48, 48, 48,  0,  0,  0,  0,  0,
+     48, 48, 48, 48, 77, 77, 77, 74, 74, 74, 68, 68, 68, 48, 48, 48,
+     54, 54, 54,  0,  0,  0,  0,  0,  0, 48, 48, 48, 54, 54, 54,  0,
+      0,  0,  0,  0,  0, 48, 48, 48, 42, 42,  0,  0,  0,  0,  0,  0,
+      0, 42, 42, 42, 48, 48,  0,  0,  0,  0, 39, 39, 39, 48, 48, 48,
+     54, 54,  0,  0,  0,  0,  0,  0,  0, 48, 48, 48, 54, 54,  0,  0,
+      0,  0,  0,  0,  0, 48, 48, 48, 42, 42,  0,  0,  0,  0,  0,  0,
+      0, 42, 42, 42, 48, 48, 48, 39, 39, 39, 39,  0, 39, 59, 59, 59,
+  ];
+
+  // Merged kick(25)/snare(100)/hat(220) from channels 4,5,6
+  const drums = [
+      0,  0,  0,220,  0,220,  0,  0,  0,220,  0,220,  0,  0,  0,220,
+      0,220,  0,  0,  0,220,  0,220,  0,  0,  0,220,  0,220,  0,  0,
+    220,220,  0,220,  0,  0,  0,220,  0,220, 25,  0, 25, 25,  0, 25,
+     25,  0,  0,220,  0,220, 25,  0,  0,220,  0,220,  0,  0, 25, 25,
+      0,220, 25,  0,  0,220,  0,220, 25,  0,  0,  0,  0,  0,  0,  0,
+     25, 25,220, 25,100,  0, 25,100,100,100,  0,  0,  0,100,  0,100,
+     25,  0,220, 25,  0,220,100,  0, 25, 25,  0, 25, 25,  0,220, 25,
+      0,220,100,  0,220, 25,  0,100, 25,  0,220,220,  0,220,100,  0,
+    220,220,  0, 25, 25,  0,100,100,  0,220,100,  0, 25,220,  0,100,
+     25,  0,220, 25,  0,220,100,  0, 25, 25,  0, 25, 25,  0,220, 25,
+      0,220,100,  0,220, 25,  0,100,220,  0, 25, 25,  0,220,100,  0,
+    220,220,  0, 25, 25,  0,220,100,  0,100,100,  0,100,  0,  0,100,
+  ];
 
   return {
     version: 2,
     cells: [
-      // Melody: SOURCE → belts → COMMAND(awk) → belts → TONE(square 25%)
+      // Lead: BYTE → 4 belts → TONE (square 50%)
       { x: 0, y: 0, type: 'machine', machineIdx: 0 },
       { x: 1, y: 0, type: 'belt', dir: 0 },
       { x: 2, y: 0, type: 'belt', dir: 0 },
-      { x: 3, y: 0, type: 'machine', machineIdx: 1 },
+      { x: 3, y: 0, type: 'belt', dir: 0 },
       { x: 4, y: 0, type: 'belt', dir: 0 },
-      { x: 5, y: 0, type: 'belt', dir: 0 },
-      { x: 6, y: 0, type: 'machine', machineIdx: 2 },
-      // Bass: SOURCE → belts → COMMAND(awk) → belts → TONE(triangle)
-      { x: 0, y: 2, type: 'machine', machineIdx: 3 },
+      { x: 5, y: 0, type: 'machine', machineIdx: 1 },
+      // Harmony: BYTE → 4 belts → TONE (square 25%)
+      { x: 0, y: 2, type: 'machine', machineIdx: 2 },
       { x: 1, y: 2, type: 'belt', dir: 0 },
       { x: 2, y: 2, type: 'belt', dir: 0 },
-      { x: 3, y: 2, type: 'machine', machineIdx: 4 },
+      { x: 3, y: 2, type: 'belt', dir: 0 },
       { x: 4, y: 2, type: 'belt', dir: 0 },
-      { x: 5, y: 2, type: 'belt', dir: 0 },
-      { x: 6, y: 2, type: 'machine', machineIdx: 5 },
-      // Drums: PUNCHCARD → belts → DRUM(bitmask)
-      { x: 0, y: 4, type: 'machine', machineIdx: 6 },
+      { x: 5, y: 2, type: 'machine', machineIdx: 3 },
+      // Bass: BYTE → 4 belts → TONE (triangle)
+      { x: 0, y: 4, type: 'machine', machineIdx: 4 },
       { x: 1, y: 4, type: 'belt', dir: 0 },
       { x: 2, y: 4, type: 'belt', dir: 0 },
       { x: 3, y: 4, type: 'belt', dir: 0 },
       { x: 4, y: 4, type: 'belt', dir: 0 },
-      { x: 5, y: 4, type: 'belt', dir: 0 },
-      { x: 6, y: 4, type: 'machine', machineIdx: 7 },
+      { x: 5, y: 4, type: 'machine', machineIdx: 5 },
+      // Drums: BYTE → 4 belts → NOISE
+      { x: 0, y: 6, type: 'machine', machineIdx: 6 },
+      { x: 1, y: 6, type: 'belt', dir: 0 },
+      { x: 2, y: 6, type: 'belt', dir: 0 },
+      { x: 3, y: 6, type: 'belt', dir: 0 },
+      { x: 4, y: 6, type: 'belt', dir: 0 },
+      { x: 5, y: 6, type: 'machine', machineIdx: 7 },
     ],
     machines: [
-      { x: 0, y: 0, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: melody, loop: true },
-      { x: 3, y: 0, type: MachineType.COMMAND, command: cmd, autoStart: true, sinkId: 0, stream: true },
-      { x: 6, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.25 },
-      { x: 0, y: 2, type: MachineType.SOURCE, command: '', autoStart: false, sinkId: 0, emitInterval: 75, sourceText: bass, loop: true },
-      { x: 3, y: 2, type: MachineType.COMMAND, command: cmd, autoStart: true, sinkId: 0, stream: true },
-      { x: 6, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
-      { x: 0, y: 4, type: MachineType.PUNCHCARD, command: '', autoStart: false, sinkId: 0, emitInterval: 300, cardData: drumData, loop: true },
-      { x: 6, y: 4, type: MachineType.DRUM, command: '', autoStart: false, sinkId: 0, bitmask: true },
+      { x: 0, y: 0, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: lead, emitInterval: 92 },
+      { x: 5, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.5 },
+      { x: 0, y: 2, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: harmony, emitInterval: 92 },
+      { x: 5, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.25 },
+      { x: 0, y: 4, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: bass, emitInterval: 92 },
+      { x: 5, y: 4, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
+      { x: 0, y: 6, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: drums, emitInterval: 92 },
+      { x: 5, y: 6, type: MachineType.NOISE, command: '', autoStart: false, sinkId: 0, noiseMode: '15bit' },
     ],
     sinkIdCounter: 1,
-    beltSpeed: 6,
+    beltSpeed: 8,
+  };
+}
+
+// Pokémon Red theme — four-voice GB chiptune: square lead, square harmony, triangle bass, LFSR noise drums
+function createGBChiptunePreset(): SaveData {
+  // Note byte values: byte = round(((midi - 21) / 87) * 254 + 1)
+  // ToneEngine maps bytes 1-255 → MIDI 21 (A0) through 108 (C8)
+  const D3 = 86, G3 = 100, A3 = 106;
+  const Fs4 = 132, G4 = 135, A4 = 141, B4 = 147;
+  const Cs5 = 153, D5 = 156, E5 = 161, Fs5 = 167, G5 = 170, A5 = 176, B5 = 182;
+  const _ = 0; // silence
+
+  // Lead melody: 64 bytes = 4 bars at 110ms/byte (square wave, 50% duty)
+  // D major arpeggios with Pokemon-style bounce
+  const lead = [
+    // Bar 1: ascending D major arpeggio
+    D5,_,Fs5,_,A5,_,D5,_, A5,_,Fs5,_,D5,_,_,_,
+    // Bar 2: ascending Em shape, resolve to D
+    E5,_,G5,_,B5,_,G5,_, E5,_,D5,_,Cs5,_,D5,_,
+    // Bar 3: repeated arpeggio climb to B5
+    D5,_,D5,_,Fs5,_,A5,_, B5,_,A5,_,G5,_,Fs5,_,
+    // Bar 4: descending phrase, cadence to rest
+    E5,_,Fs5,_,D5,_,B4,_, A4,_,B4,_,D5,_,_,_,
+  ];
+
+  // Harmony: 64 bytes, quarter-note chord tones (square wave, 25% duty)
+  const harmony = [
+    A4,_,_,_, Fs4,_,_,_, D5,_,_,_, A4,_,_,_,
+    G4,_,_,_, B4,_,_,_, A4,_,_,_, Fs4,_,_,_,
+    Fs4,_,_,_, A4,_,_,_, Fs4,_,_,_, A4,_,_,_,
+    G4,_,_,_, Fs4,_,_,_, A4,_,_,_, _,_,_,_,
+  ];
+
+  // Bass: 64 bytes, pumping eighth-note root motion (triangle wave)
+  const bass = [
+    D3,_,D3,_, D3,_,D3,_, D3,_,D3,_, D3,_,D3,_,
+    G3,_,G3,_, G3,_,G3,_, A3,_,A3,_, A3,_,A3,_,
+    D3,_,D3,_, D3,_,D3,_, D3,_,D3,_, D3,_,D3,_,
+    G3,_,G3,_, G3,_,G3,_, A3,_,A3,_, A3,_,_,_,
+  ];
+
+  // Noise drums: 16 bytes = 1 bar (loops 4x per melody cycle)
+  // kick=25 (low rumble), snare=100 (mid crack), hat=220 (high hiss)
+  const drums = [
+    25,25,220,_, 100,100,220,_, 25,25,220,220, 100,100,220,_,
+  ];
+
+  return {
+    version: 2,
+    cells: [
+      // Lead: BYTE → 4 belts → TONE
+      { x: 0, y: 0, type: 'machine', machineIdx: 0 },
+      { x: 1, y: 0, type: 'belt', dir: 0 },
+      { x: 2, y: 0, type: 'belt', dir: 0 },
+      { x: 3, y: 0, type: 'belt', dir: 0 },
+      { x: 4, y: 0, type: 'belt', dir: 0 },
+      { x: 5, y: 0, type: 'machine', machineIdx: 1 },
+      // Harmony: BYTE → 4 belts → TONE
+      { x: 0, y: 2, type: 'machine', machineIdx: 2 },
+      { x: 1, y: 2, type: 'belt', dir: 0 },
+      { x: 2, y: 2, type: 'belt', dir: 0 },
+      { x: 3, y: 2, type: 'belt', dir: 0 },
+      { x: 4, y: 2, type: 'belt', dir: 0 },
+      { x: 5, y: 2, type: 'machine', machineIdx: 3 },
+      // Bass: BYTE → 4 belts → TONE
+      { x: 0, y: 4, type: 'machine', machineIdx: 4 },
+      { x: 1, y: 4, type: 'belt', dir: 0 },
+      { x: 2, y: 4, type: 'belt', dir: 0 },
+      { x: 3, y: 4, type: 'belt', dir: 0 },
+      { x: 4, y: 4, type: 'belt', dir: 0 },
+      { x: 5, y: 4, type: 'machine', machineIdx: 5 },
+      // Drums: BYTE → 4 belts → NOISE
+      { x: 0, y: 6, type: 'machine', machineIdx: 6 },
+      { x: 1, y: 6, type: 'belt', dir: 0 },
+      { x: 2, y: 6, type: 'belt', dir: 0 },
+      { x: 3, y: 6, type: 'belt', dir: 0 },
+      { x: 4, y: 6, type: 'belt', dir: 0 },
+      { x: 5, y: 6, type: 'machine', machineIdx: 7 },
+    ],
+    machines: [
+      { x: 0, y: 0, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: lead, emitInterval: 110 },
+      { x: 5, y: 0, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.5 },
+      { x: 0, y: 2, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: harmony, emitInterval: 110 },
+      { x: 5, y: 2, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'square', dutyCycle: 0.25 },
+      { x: 0, y: 4, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: bass, emitInterval: 110 },
+      { x: 5, y: 4, type: MachineType.TONE, command: '', autoStart: false, sinkId: 0, waveform: 'triangle' },
+      { x: 0, y: 6, type: MachineType.BYTE, command: '', autoStart: false, sinkId: 0, byteData: drums, emitInterval: 110 },
+      { x: 5, y: 6, type: MachineType.NOISE, command: '', autoStart: false, sinkId: 0, noiseMode: '15bit' },
+    ],
+    sinkIdCounter: 1,
+    beltSpeed: 8,
   };
 }
 
@@ -551,9 +662,15 @@ export const PRESETS: Preset[] = [
     data: createFibonacciPreset(),
   },
   {
-    id: 'mml-tone',
-    name: 'Korobeiniki Music Box',
-    description: 'Three-voice Korobeiniki — square lead, triangle bass, and punch card drum loop with bitmask beats',
-    data: createMMLTonePreset(),
+    id: 'gb-chiptune',
+    name: 'GB Chiptune',
+    description: 'Four-voice Game Boy chiptune — square leads, triangle bass, and LFSR noise drums',
+    data: createGBChiptunePreset(),
+  },
+  {
+    id: 'cave-story',
+    name: 'Cave Story Theme',
+    description: 'Cave Story main theme — four-voice chiptune transcribed from the original XM module by Pixel',
+    data: createCaveStoryPreset(),
   },
 ];

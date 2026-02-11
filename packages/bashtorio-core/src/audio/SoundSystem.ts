@@ -40,6 +40,8 @@ const SOUND_MANIFEST = {
   drumSnare:          {},
   drumHat:            {},
   drumTom:            {},
+  tntSpark:           {},
+  tntExplode:         {}
 } as const;
 
 export type SoundName = keyof typeof SOUND_MANIFEST;
@@ -66,6 +68,7 @@ const SOUND_MAP: Partial<Record<GameEvent, SoundMapping>> = {
   simulationEnded: { sound: 'simulationEnd' },
   configureStart: { sound: 'configureStart' },
   editFailed: { sound: 'deny' },
+  tntExplode: { sound: 'tntExplode' }
 };
 
 const KEYPRESS_MIN_INTERVAL = 80;
@@ -246,6 +249,16 @@ export function connectSoundEvents(settings?: Settings): void {
     unsubscribers.push(unsub);
   }
 
+  const TNT_MAX = 20;
+  const sparkUnsub = onGameEvent('tntSpark', ({ count }) => {
+    const now = performance.now();
+    const last = lastPlayTime.get('tntSpark') ?? 0;
+    if (now - last < KEYPRESS_MIN_INTERVAL) return;
+    lastPlayTime.set('tntSpark', now);
+    play('tntSpark', { randomPitch: 0.15, volume: count / TNT_MAX });
+  });
+  unsubscribers.push(sparkUnsub);
+
   const DRUM_SAMPLES: SoundName[] = ['drumKick', 'drumSnare', 'drumHat', 'drumTom'];
   const drumUnsub = onGameEvent('drumHit', ({ sample }) => {
     const now = performance.now();
@@ -286,7 +299,7 @@ export function connectSoundEvents(settings?: Settings): void {
   }
 }
 
-export function play(sound: SoundName, options?: { randomPitch?: number; pitch?: number }): void {
+export function play(sound: SoundName, options?: { randomPitch?: number; pitch?: number; volume?: number }): void {
   if (_muted) return;
   if (!ctx) return;
   if (ctx.state === 'suspended') ctx.resume();
@@ -307,7 +320,14 @@ export function play(sound: SoundName, options?: { randomPitch?: number; pitch?:
     source.playbackRate.value = 1 + variation;
   }
 
-  source.connect(channelFor(sound));
+  if (options?.volume !== undefined) {
+    const vol = ctx.createGain();
+    vol.gain.value = options.volume;
+    source.connect(vol);
+    vol.connect(channelFor(sound));
+  } else {
+    source.connect(channelFor(sound));
+  }
   source.start(0);
   listeners.forEach(cb => cb(sound));
 }

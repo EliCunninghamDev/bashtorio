@@ -10,7 +10,7 @@ export class CommandModal extends BaseModal {
       <div class="modal-content machine-panel-wrap">
         <div class="machine-panel cmd-terminal">
           <div class="machine-panel-header">
-            <span class="machine-panel-title">Shell Machine</span>
+            <input type="text" class="machine-panel-title cmd-label" spellcheck="false" style="background:transparent;border:none;color:inherit;font:inherit;padding:0;width:auto;outline:none;">
             <div class="machine-panel-controls">
               <label class="machine-panel-check">
                 <input type="checkbox" class="cmd-autostart">
@@ -74,6 +74,7 @@ export class CommandModal extends BaseModal {
   configure(machine: CommandMachine) {
     this.machine = machine;
 
+    this.qs<HTMLInputElement>('.cmd-label').value = machine.label;
     this.qs<HTMLTextAreaElement>('.cmd-command').value = machine.command;
     this.qs<HTMLInputElement>('.cmd-autostart').checked = machine.stream || machine.autoStart;
     this.qs<HTMLInputElement>('.cmd-autostart').disabled = machine.stream;
@@ -89,6 +90,7 @@ export class CommandModal extends BaseModal {
 
   protected save() {
     if (this.machine) {
+      this.machine.label = this.qs<HTMLInputElement>('.cmd-label').value.trim() || this.machine.label;
       this.machine.command = this.qs<HTMLTextAreaElement>('.cmd-command').value.trim() || 'cat';
       this.machine.stream = this.qs<HTMLInputElement>('.cmd-stream').checked;
       this.machine.autoStart = this.machine.stream || this.qs<HTMLInputElement>('.cmd-autostart').checked;

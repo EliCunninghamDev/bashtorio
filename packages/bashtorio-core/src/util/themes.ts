@@ -48,6 +48,8 @@ export interface ColorTheme {
 	tooltipCmd: string;
 	tooltipInput: string;
 	tooltipOutput: string;
+	// Text
+	contrastText: string;
 	// Machine colors
 	machineColors: Record<MachineType, MachineColor>;
 	// UI chrome
@@ -165,6 +167,7 @@ function fromPalette(p: ThemePalette): ColorTheme {
 		tooltipCmd: p.green,
 		tooltipInput: p.orange,
 		tooltipOutput: p.fg,
+		contrastText: p.fg,
 		machineColors: {
 			[MachineType.SOURCE]:     mc(p.green),
 			[MachineType.SINK]:       mc(p.red),
@@ -193,6 +196,7 @@ function fromPalette(p: ThemePalette): ColorTheme {
 			[MachineType.SEVENSEG]:   { bg: '#000000', border: p.fg, text: p.red },
 			[MachineType.DRUM]:       mc(p.orange),
 			[MachineType.TONE]:       mc(p.purple),
+			[MachineType.NOISE]:      mc(p.green),
 			[MachineType.SPEAK]:      mc(p.cyan),
 			[MachineType.SCREEN]:     { bg: '#000000', border: p.fg, text: '#ffffff' },
 			[MachineType.BYTE]:       mc(p.cyan),
@@ -252,6 +256,7 @@ function fromLightPalette(p: ThemePalette): ColorTheme {
 		tooltipCmd: darken(p.green, 0.1),
 		tooltipInput: p.orange,
 		tooltipOutput: p.fg,
+		contrastText: p.fg,
 		machineColors: {
 			[MachineType.SOURCE]:     mcLight(p.green),
 			[MachineType.SINK]:       mcLight(p.red),
@@ -279,6 +284,7 @@ function fromLightPalette(p: ThemePalette): ColorTheme {
 			[MachineType.SEVENSEG]:   { bg: '#f5f5f5', border: p.fg, text: p.red },
 			[MachineType.DRUM]:       mcLight(p.orange),
 			[MachineType.TONE]:       mcLight(p.purple),
+			[MachineType.NOISE]:      mcLight(p.green),
 			[MachineType.SPEAK]:      mcLight(p.cyan),
 			[MachineType.SCREEN]:     { bg: '#f5f5f5', border: p.fg, text: '#000000' },
 			[MachineType.BYTE]:       mcLight(p.cyan),
@@ -338,6 +344,7 @@ const MIDNIGHT: ColorTheme = {
 	tooltipCmd: '#33ff33',
 	tooltipInput: '#ffaa00',
 	tooltipOutput: '#cccccc',
+	contrastText: '#ffffff',
 	machineColors: {
 		[MachineType.SOURCE]:     { bg: '#2a5a2a', border: '#4a8a4a', text: '#ccc' },
 		[MachineType.SINK]:       { bg: '#5a2a2a', border: '#8a4a4a', text: '#ccc' },
@@ -366,6 +373,7 @@ const MIDNIGHT: ColorTheme = {
 		[MachineType.SEVENSEG]:   { bg: '#000000', border: '#ffffff', text: '#ff0000' },
 		[MachineType.DRUM]:       { bg: '#4a3a2a', border: '#aa7744', text: '#ffcc66' },
 		[MachineType.TONE]:       { bg: '#3a2a5a', border: '#7a4aaa', text: '#cc99ff' },
+		[MachineType.NOISE]:      { bg: '#2a4a2a', border: '#5a8a5a', text: '#88cc88' },
 		[MachineType.SPEAK]:      { bg: '#2a4a5a', border: '#4a8aaa', text: '#88ddff' },
 		[MachineType.SCREEN]:     { bg: '#000000', border: '#ffffff', text: '#ffffff' },
 		[MachineType.BYTE]:       { bg: '#2a4a4a', border: '#4a8a8a', text: '#88ddcc' },
